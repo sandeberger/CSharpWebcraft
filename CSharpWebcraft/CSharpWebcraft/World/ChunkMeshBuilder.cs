@@ -302,6 +302,11 @@ public static class ChunkMeshBuilder
         int blockLevel = chunk.GetBlockLightOnly(bx, by, bz);
         float skyBri = MathF.Pow((float)skyLevel / GameConfig.MAX_LIGHT_LEVEL, GameConfig.LIGHT_GAMMA);
         float blockBri = MathF.Pow((float)blockLevel / GameConfig.MAX_LIGHT_LEVEL, GameConfig.LIGHT_GAMMA);
+
+        // Boost emissive billboards (torches etc.) to HDR for bloom
+        if (blkData.LightEmission > 0)
+            blockBri = MathF.Max(blockBri, 2f);
+
         uint bCol = blkData.Color;
         float r = ((bCol >> 16) & 0xFF) / 255f;
         float g = ((bCol >> 8) & 0xFF) / 255f;

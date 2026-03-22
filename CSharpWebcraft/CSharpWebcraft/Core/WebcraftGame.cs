@@ -64,7 +64,7 @@ public class WebcraftGame : GameWindow
             Size.X / (float)Size.Y);
 
         _renderer = new Renderer();
-        _renderer.Init();
+        _renderer.Init(Size.X, Size.Y);
 
         _hud = new HudRenderer();
         _hud.Init();
@@ -256,6 +256,7 @@ public class WebcraftGame : GameWindow
         if (_camera != null)
             _camera.AspectRatio = e.Width / (float)e.Height;
         _hud?.UpdateScreenSize(e.Width, e.Height);
+        _renderer?.Resize(e.Width, e.Height);
     }
 
     protected override void OnUnload()

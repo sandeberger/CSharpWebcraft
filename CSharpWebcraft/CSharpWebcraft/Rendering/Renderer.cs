@@ -15,6 +15,8 @@ public class Renderer
     private readonly FrustumCuller _frustumCuller = new();
     private MobRenderer _mobRenderer = null!;
     private StarRenderer _starRenderer = null!;
+    private PostProcessing _postProcessing = null!;
+    private readonly System.Diagnostics.Stopwatch _timer = System.Diagnostics.Stopwatch.StartNew();
 
     public TextureAtlas Atlas => _atlas;
 
@@ -26,7 +28,7 @@ public class Renderer
     private CloudRenderer _cloudRenderer = null!;
     private RainRenderer _rainRenderer = null!;
 
-    public void Init()
+    public void Init(int screenWidth, int screenHeight)
     {
         string assetsPath = Path.Combine(AppContext.BaseDirectory, "Assets");
         _blockShader = new Shader(
@@ -45,6 +47,8 @@ public class Renderer
         _mobRenderer.Init();
         _starRenderer = new StarRenderer();
         _starRenderer.Init();
+        _postProcessing = new PostProcessing();
+        _postProcessing.Init(screenWidth, screenHeight, assetsPath);
 
         CreateSkyDome();
 
@@ -57,6 +61,9 @@ public class Renderer
 
     public void Render(Camera camera, WorldManager world, GameTime gameTime, WeatherSystem? weather = null, float skyMultiplier = 1f, bool isUnderwater = false, MobManager? mobManager = null)
     {
+        // Render scene to HDR FBO for post-processing
+        _postProcessing.BeginScenePass();
+
         if (isUnderwater)
             GL.ClearColor(0.05f, 0.15f, 0.30f, 1f);
         else
@@ -85,10 +92,15 @@ public class Renderer
             fogDensity = GameConfig.FOG_DENSITY + (weather?.FogDensityOffset ?? 0);
         }
 
+        // Compute sun direction for sky + water
+        float hour = gameTime.GameHour;
+        float sunAngle = (hour / 24f) * MathF.PI * 2f - MathF.PI / 2f;
+        Vector3 sunDir = Vector3.Normalize(new Vector3(MathF.Cos(sunAngle), MathF.Sin(sunAngle), 0.3f));
+
         // Sky (render first, at max depth)
         if (!isUnderwater)
         {
-            RenderSky(camera, gameTime, weather, fogColor);
+            RenderSky(camera, gameTime, weather, fogColor, sunDir);
             _starRenderer.Render(camera, gameTime.GameHour, weather?.Gloom ?? 0f);
         }
 
@@ -108,6 +120,7 @@ public class Renderer
         _blockShader.SetFloat("uFogHeightEnd", GameConfig.WATER_LEVEL + 50f);
         _blockShader.SetVector3("uFogColorBottom", GetFogColorBottom(gameTime.GameHour, weather));
         _blockShader.SetInt("uTexture", 0);
+        _blockShader.SetInt("uWaterPass", 0);
         _atlas.Use();
 
         // Build meshes for dirty chunks and render
@@ -153,11 +166,15 @@ public class Renderer
             _mobRenderer.Render(mobManager, _blockShader, world, skyMultiplier);
         }
 
-        // Transparent pass (blending)
+        // Transparent pass (blending) — enable water PBR
         GL.Enable(EnableCap.Blend);
         GL.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
         GL.DepthMask(false);
         _blockShader.SetFloat("uAlphaTest", 0.01f);
+        _blockShader.SetInt("uWaterPass", 1);
+        _blockShader.SetFloat("uTime", (float)_timer.Elapsed.TotalSeconds);
+        _blockShader.SetVector3("uCameraPos", camera.Position);
+        _blockShader.SetVector3("uSunDirection", sunDir);
         foreach (var chunk in world.GetAllChunks())
         {
             if (chunk.IsDisposed) continue;
@@ -171,10 +188,19 @@ public class Renderer
         }
         GL.DepthMask(true);
         GL.Disable(EnableCap.Blend);
+        _blockShader.SetInt("uWaterPass", 0);
 
         // Rain (after all world geometry)
         if (weather != null)
             _rainRenderer.Render(camera, weather.Precipitation, camera.Position, world);
+
+        // Apply SSAO + Bloom post-processing → output to screen
+        _postProcessing.Apply(camera);
+    }
+
+    public void Resize(int width, int height)
+    {
+        _postProcessing?.Resize(width, height);
     }
 
     private void RebuildChunkMesh(Chunk chunk, WorldManager world)
@@ -207,7 +233,7 @@ public class Renderer
         else chunk.BillboardMesh = null;
     }
 
-    private void RenderSky(Camera camera, GameTime gameTime, WeatherSystem? weather, Vector3 fogColor)
+    private void RenderSky(Camera camera, GameTime gameTime, WeatherSystem? weather, Vector3 fogColor, Vector3 sunDir)
     {
         GL.DepthFunc(DepthFunction.Lequal);
         GL.DepthMask(false);
@@ -246,10 +272,6 @@ public class Renderer
         _skyShader.SetVector3("uTopColor", topColor);
         _skyShader.SetVector3("uBottomColor", fogColor);
 
-        // Sun direction based on hour
-        float sunAngle = (hour / 24f) * MathF.PI * 2f - MathF.PI / 2f;
-        Vector3 sunDir = new(MathF.Cos(sunAngle), MathF.Sin(sunAngle), 0.3f);
-        sunDir = Vector3.Normalize(sunDir);
         _skyShader.SetVector3("uSunDirection", sunDir);
         float sunGlow = hour >= 5 && hour < 19 ? 1f : 0f;
         if (weather != null) sunGlow *= weather.DirectionalScale;
@@ -384,6 +406,7 @@ public class Renderer
         _rainRenderer?.Dispose();
         _mobRenderer?.Dispose();
         _starRenderer?.Dispose();
+        _postProcessing?.Dispose();
         GL.DeleteBuffer(_skyVbo);
         GL.DeleteVertexArray(_skyVao);
     }

@@ -139,4 +139,15 @@ public static class GameConfig
     public const float WATER_SURFACE_OFFSET = 0.125f; // 2/16 of a block
     public const float UNDERWATER_FOG_DENSITY = 0.08f;
     public const uint UNDERWATER_FOG_COLOR = 0x1A4466;
+
+    // SSAO (Screen-Space Ambient Occlusion)
+    public const float SSAO_RADIUS = 0.5f;
+    public const float SSAO_BIAS = 0.025f;
+    public const float SSAO_POWER = 1.5f;
+    public const float SSAO_STRENGTH = 0.5f;
+
+    // Bloom (emissive glow for torches, lava, spider eyes, etc.)
+    public const float BLOOM_THRESHOLD = 0.8f;
+    public const float BLOOM_INTENSITY = 0.5f;
+    public const int BLOOM_BLUR_PASSES = 4;
 }

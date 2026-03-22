@@ -14,6 +14,7 @@ public class Renderer
     private TextureAtlas _atlas = null!;
     private readonly FrustumCuller _frustumCuller = new();
     private MobRenderer _mobRenderer = null!;
+    private StarRenderer _starRenderer = null!;
 
     public TextureAtlas Atlas => _atlas;
 
@@ -42,6 +43,8 @@ public class Renderer
         _rainRenderer.Init();
         _mobRenderer = new MobRenderer();
         _mobRenderer.Init();
+        _starRenderer = new StarRenderer();
+        _starRenderer.Init();
 
         CreateSkyDome();
 
@@ -68,11 +71,7 @@ public class Renderer
         if (_frustumCuller.NeedsUpdate(camera.Position, camera.Yaw, camera.Pitch))
             _frustumCuller.Update(vp, camera.Position, camera.Yaw, camera.Pitch);
 
-        // Sky (render first, at max depth)
-        if (!isUnderwater)
-            RenderSky(camera, gameTime, weather);
-
-        // Calculate fog color from time of day + weather
+        // Calculate fog color from time of day + weather (computed before sky for horizon blending)
         Vector3 fogColor;
         float fogDensity;
         if (isUnderwater)
@@ -84,6 +83,13 @@ public class Renderer
         {
             fogColor = GetFogColor(gameTime.GameHour, weather);
             fogDensity = GameConfig.FOG_DENSITY + (weather?.FogDensityOffset ?? 0);
+        }
+
+        // Sky (render first, at max depth)
+        if (!isUnderwater)
+        {
+            RenderSky(camera, gameTime, weather, fogColor);
+            _starRenderer.Render(camera, gameTime.GameHour, weather?.Gloom ?? 0f);
         }
 
         // Clouds (after sky, before terrain)
@@ -98,6 +104,9 @@ public class Renderer
         _blockShader.SetFloat("uFogDensity", fogDensity);
         _blockShader.SetFloat("uAlphaTest", 0.01f);
         _blockShader.SetFloat("uSkyMultiplier", skyMultiplier);
+        _blockShader.SetFloat("uFogHeightStart", GameConfig.WATER_LEVEL);
+        _blockShader.SetFloat("uFogHeightEnd", GameConfig.WATER_LEVEL + 50f);
+        _blockShader.SetVector3("uFogColorBottom", GetFogColorBottom(gameTime.GameHour, weather));
         _blockShader.SetInt("uTexture", 0);
         _atlas.Use();
 
@@ -198,7 +207,7 @@ public class Renderer
         else chunk.BillboardMesh = null;
     }
 
-    private void RenderSky(Camera camera, GameTime gameTime, WeatherSystem? weather)
+    private void RenderSky(Camera camera, GameTime gameTime, WeatherSystem? weather, Vector3 fogColor)
     {
         GL.DepthFunc(DepthFunction.Lequal);
         GL.DepthMask(false);
@@ -208,47 +217,34 @@ public class Renderer
         _skyShader.SetMatrix4("uProjection", camera.GetProjectionMatrix());
 
         float hour = gameTime.GameHour;
-        Vector3 topColor, bottomColor;
+        Vector3 topColor;
 
         if (hour >= 7 && hour < 17)
-        {
             topColor = Utils.MathHelper.ColorFromHex(GameConfig.SKY_COLOR_DAY);
-            bottomColor = topColor * 0.7f;
-        }
         else if (hour >= 5 && hour < 7)
         {
             float t = (hour - 5) / 2f;
             topColor = Utils.MathHelper.LerpColor(Utils.MathHelper.ColorFromHex(GameConfig.SKY_COLOR_NIGHT), Utils.MathHelper.ColorFromHex(GameConfig.SKY_COLOR_DAY), t);
-            bottomColor = Utils.MathHelper.LerpColor(Utils.MathHelper.ColorFromHex(GameConfig.SKY_COLOR_SUNRISE), topColor, t);
         }
         else if (hour >= 17 && hour < 19)
         {
             float t = 1f - (hour - 17) / 2f;
             topColor = Utils.MathHelper.LerpColor(Utils.MathHelper.ColorFromHex(GameConfig.SKY_COLOR_NIGHT), Utils.MathHelper.ColorFromHex(GameConfig.SKY_COLOR_DAY), t);
-            bottomColor = Utils.MathHelper.LerpColor(Utils.MathHelper.ColorFromHex(GameConfig.SKY_COLOR_SUNSET), topColor, t);
         }
         else
-        {
             topColor = Utils.MathHelper.ColorFromHex(GameConfig.SKY_COLOR_NIGHT);
-            bottomColor = topColor * 0.5f;
-        }
 
         // Weather: tint sky with gloom
         if (weather != null && weather.Gloom > 0)
-        {
             topColor = Utils.MathHelper.LerpColor(topColor, weather.SkyTint, weather.Gloom);
-            bottomColor = Utils.MathHelper.LerpColor(bottomColor, weather.SkyTint, weather.Gloom);
-        }
 
         // Lightning flash
         if (weather != null && weather.LightningStrength > 0)
-        {
             topColor = Utils.MathHelper.LerpColor(topColor, Vector3.One, weather.LightningStrength * 0.5f);
-            bottomColor = Utils.MathHelper.LerpColor(bottomColor, Vector3.One, weather.LightningStrength * 0.5f);
-        }
 
+        // Use fog color as horizon/bottom color for seamless blending
         _skyShader.SetVector3("uTopColor", topColor);
-        _skyShader.SetVector3("uBottomColor", bottomColor);
+        _skyShader.SetVector3("uBottomColor", fogColor);
 
         // Sun direction based on hour
         float sunAngle = (hour / 24f) * MathF.PI * 2f - MathF.PI / 2f;
@@ -348,6 +344,37 @@ public class Renderer
         return fogColor;
     }
 
+    private Vector3 GetFogColorBottom(float hour, WeatherSystem? weather)
+    {
+        Vector3 fogColor;
+        if (hour >= 7 && hour < 17)
+            fogColor = Utils.MathHelper.ColorFromHex(GameConfig.FOG_COLOR_DAY) * new Vector3(1.0f, 0.97f, 0.92f);
+        else if (hour >= 5 && hour < 7)
+        {
+            float t = (hour - 5) / 2f;
+            fogColor = Utils.MathHelper.LerpColor(
+                Utils.MathHelper.ColorFromHex(GameConfig.FOG_COLOR_NIGHT),
+                Utils.MathHelper.ColorFromHex(GameConfig.FOG_COLOR_SUNRISE) * new Vector3(1.1f, 0.9f, 0.7f), t);
+        }
+        else if (hour >= 17 && hour < 19)
+        {
+            float t = 1f - (hour - 17) / 2f;
+            fogColor = Utils.MathHelper.LerpColor(
+                Utils.MathHelper.ColorFromHex(GameConfig.FOG_COLOR_NIGHT),
+                Utils.MathHelper.ColorFromHex(GameConfig.FOG_COLOR_SUNSET) * new Vector3(1.1f, 0.85f, 0.6f), t);
+        }
+        else
+            fogColor = Utils.MathHelper.ColorFromHex(GameConfig.FOG_COLOR_NIGHT);
+
+        if (weather != null && weather.Gloom > 0)
+            fogColor = Utils.MathHelper.LerpColor(fogColor, weather.FogTint, weather.Gloom);
+
+        if (weather != null && weather.LightningStrength > 0)
+            fogColor = Utils.MathHelper.LerpColor(fogColor, Vector3.One, weather.LightningStrength * 0.25f);
+
+        return fogColor;
+    }
+
     public void Dispose()
     {
         _blockShader?.Dispose();
@@ -356,6 +383,7 @@ public class Renderer
         _cloudRenderer?.Dispose();
         _rainRenderer?.Dispose();
         _mobRenderer?.Dispose();
+        _starRenderer?.Dispose();
         GL.DeleteBuffer(_skyVbo);
         GL.DeleteVertexArray(_skyVao);
     }

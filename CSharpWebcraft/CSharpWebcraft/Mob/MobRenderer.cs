@@ -44,6 +44,10 @@ public class MobRenderer : IDisposable
         GL.VertexAttribPointer(5, 1, VertexAttribPointerType.Float, false, stride, 12 * sizeof(float));
         GL.EnableVertexAttribArray(5);
 
+        // AO: location 6, 1 float
+        GL.VertexAttribPointer(6, 1, VertexAttribPointerType.Float, false, stride, 13 * sizeof(float));
+        GL.EnableVertexAttribArray(6);
+
         GL.BindVertexArray(0);
     }
 

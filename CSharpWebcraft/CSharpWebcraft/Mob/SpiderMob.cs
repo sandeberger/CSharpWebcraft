@@ -744,5 +744,6 @@ public class SpiderMob : MobBase
         verts[idx++] = v;
         verts[idx++] = skyBri;
         verts[idx++] = blockBri;
+        verts[idx++] = 1.0f; // AO (no occlusion for mobs)
     }
 }

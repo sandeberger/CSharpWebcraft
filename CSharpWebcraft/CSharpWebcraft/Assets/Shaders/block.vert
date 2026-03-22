@@ -6,6 +6,7 @@ layout(location = 2) in vec3 aColor;
 layout(location = 3) in vec2 aTexCoord;
 layout(location = 4) in float aSkyBri;
 layout(location = 5) in float aBlockBri;
+layout(location = 6) in float aAO;
 
 out vec3 vColor;
 out vec2 vTexCoord;
@@ -14,6 +15,7 @@ out float vFogDistance;
 out vec3 vWorldPos;
 out float vSkyBri;
 out float vBlockBri;
+out float vAO;
 
 uniform mat4 uModel;
 uniform mat4 uView;
@@ -32,4 +34,5 @@ void main()
     vWorldPos = worldPos.xyz;
     vSkyBri = aSkyBri;
     vBlockBri = aBlockBri;
+    vAO = aAO;
 }

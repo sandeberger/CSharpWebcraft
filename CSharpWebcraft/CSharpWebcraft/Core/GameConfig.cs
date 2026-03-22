@@ -90,7 +90,7 @@ public static class GameConfig
     public const int STAR_COUNT = 1000;
     public const float STAR_FIELD_RADIUS = 500f;
     public const uint STAR_COLOR = 0xFFFFFF;
-    public const float STAR_SIZE = 0.5f;
+    public const float STAR_SIZE = 2.0f; // gl_PointSize in pixels
     public const float SUN_SIZE = 20f;
     public const float MOON_SIZE = 15f;
     public const float MOON_SIZE_MIN = 7.5f;

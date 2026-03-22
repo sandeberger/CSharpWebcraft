@@ -9,8 +9,8 @@ public class ChunkMesh : IDisposable
     public int VertexCount { get; private set; }
     private bool _disposed;
 
-    // Vertex format: pos3 + normal3 + tintColor3 + uv2 + skyBri1 + blockBri1 = 13 floats per vertex
-    public const int FloatsPerVertex = 13;
+    // Vertex format: pos3 + normal3 + tintColor3 + uv2 + skyBri1 + blockBri1 + ao1 = 14 floats per vertex
+    public const int FloatsPerVertex = 14;
     public const int Stride = FloatsPerVertex * sizeof(float);
 
     public ChunkMesh()
@@ -51,6 +51,10 @@ public class ChunkMesh : IDisposable
         // BlockBrightness: location 5, 1 float
         GL.VertexAttribPointer(5, 1, VertexAttribPointerType.Float, false, Stride, 12 * sizeof(float));
         GL.EnableVertexAttribArray(5);
+
+        // AO: location 6, 1 float
+        GL.VertexAttribPointer(6, 1, VertexAttribPointerType.Float, false, Stride, 13 * sizeof(float));
+        GL.EnableVertexAttribArray(6);
 
         GL.BindVertexArray(0);
     }

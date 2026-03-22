@@ -42,6 +42,60 @@ public static class ChunkMeshBuilder
     private const int MAX_TRANSPARENT_VERTS = 50000;
     private const int MAX_BILLBOARD_VERTS = 20000;
 
+    // AO darkening factors for 0, 1, 2, 3 visible neighbors (0 = fully occluded, 3 = no occlusion)
+    private static readonly float[] AOValues = [0.4f, 0.6f, 0.8f, 1.0f];
+
+    // Flipped quad indices for diagonal flip when AO values are asymmetric
+    private static readonly int[] QuadIndicesFlipped = [0, 1, 3, 3, 1, 2];
+
+    // AO neighbor offsets: [face][corner][neighbor(side1/side2/corner)][axis(x/y/z)]
+    // For each corner vertex of each face, defines 2 side neighbors and 1 corner diagonal
+    private static readonly int[,,,] AONeighborOffsets = new int[6, 4, 3, 3]
+    {
+        // Face 0: UP (+Y) - corners: BL(x,y+1,z+1) BR(x+1,y+1,z+1) TR(x+1,y+1,z) TL(x,y+1,z)
+        {
+            { {-1,1,0}, {0,1,1}, {-1,1,1} },
+            { {1,1,0}, {0,1,1}, {1,1,1} },
+            { {1,1,0}, {0,1,-1}, {1,1,-1} },
+            { {-1,1,0}, {0,1,-1}, {-1,1,-1} },
+        },
+        // Face 1: DOWN (-Y) - corners: BL(x+1,y,z+1) BR(x,y,z+1) TR(x,y,z) TL(x+1,y,z)
+        {
+            { {1,-1,0}, {0,-1,1}, {1,-1,1} },
+            { {-1,-1,0}, {0,-1,1}, {-1,-1,1} },
+            { {-1,-1,0}, {0,-1,-1}, {-1,-1,-1} },
+            { {1,-1,0}, {0,-1,-1}, {1,-1,-1} },
+        },
+        // Face 2: NORTH (+Z) - corners: BL(x,y,z+1) BR(x+1,y,z+1) TR(x+1,y+1,z+1) TL(x,y+1,z+1)
+        {
+            { {-1,0,1}, {0,-1,1}, {-1,-1,1} },
+            { {1,0,1}, {0,-1,1}, {1,-1,1} },
+            { {1,0,1}, {0,1,1}, {1,1,1} },
+            { {-1,0,1}, {0,1,1}, {-1,1,1} },
+        },
+        // Face 3: SOUTH (-Z) - corners: BL(x+1,y,z) BR(x,y,z) TR(x,y+1,z) TL(x+1,y+1,z)
+        {
+            { {1,0,-1}, {0,-1,-1}, {1,-1,-1} },
+            { {-1,0,-1}, {0,-1,-1}, {-1,-1,-1} },
+            { {-1,0,-1}, {0,1,-1}, {-1,1,-1} },
+            { {1,0,-1}, {0,1,-1}, {1,1,-1} },
+        },
+        // Face 4: EAST (+X) - corners: BL(x+1,y,z+1) BR(x+1,y,z) TR(x+1,y+1,z) TL(x+1,y+1,z+1)
+        {
+            { {1,-1,0}, {1,0,1}, {1,-1,1} },
+            { {1,-1,0}, {1,0,-1}, {1,-1,-1} },
+            { {1,1,0}, {1,0,-1}, {1,1,-1} },
+            { {1,1,0}, {1,0,1}, {1,1,1} },
+        },
+        // Face 5: WEST (-X) - corners: BL(x,y,z) BR(x,y,z+1) TR(x,y+1,z+1) TL(x,y+1,z)
+        {
+            { {-1,-1,0}, {-1,0,-1}, {-1,-1,-1} },
+            { {-1,-1,0}, {-1,0,1}, {-1,-1,1} },
+            { {-1,1,0}, {-1,0,1}, {-1,1,1} },
+            { {-1,1,0}, {-1,0,-1}, {-1,1,-1} },
+        },
+    };
+
     public static ChunkMeshData Build(Chunk chunk, WorldManager world)
     {
         _opaqueBuffer ??= new float[MAX_OPAQUE_VERTS * ChunkMesh.FloatsPerVertex];
@@ -174,6 +228,16 @@ public static class ChunkMeshBuilder
                 float[] uvX = [u0, u1, u1, u0];
                 float[] uvY = [v0, v0, v1, v1];
 
+                // Compute per-vertex AO for 4 corners
+                float ao0 = ComputeVertexAO(chunk, x, y, z, face, 0, world);
+                float ao1 = ComputeVertexAO(chunk, x, y, z, face, 1, world);
+                float ao2 = ComputeVertexAO(chunk, x, y, z, face, 2, world);
+                float ao3 = ComputeVertexAO(chunk, x, y, z, face, 3, world);
+                float[] aoValues = [ao0, ao1, ao2, ao3];
+
+                // Flip quad diagonal to fix AO interpolation artifacts
+                var indices = (ao0 + ao2 > ao1 + ao3) ? QuadIndices : QuadIndicesFlipped;
+
                 // Emit 6 vertices (2 triangles)
                 var buf = isTrans ? _transparentBuffer! : _opaqueBuffer!;
                 ref int count = ref (isTrans ? ref _transparentCount : ref _opaqueCount);
@@ -183,7 +247,7 @@ public static class ChunkMeshBuilder
 
                 for (int i = 0; i < 6; i++)
                 {
-                    int idx = QuadIndices[i];
+                    int idx = indices[i];
                     int offset = count * ChunkMesh.FloatsPerVertex;
                     buf[offset + 0] = verts[idx * 3 + 0];
                     buf[offset + 1] = verts[idx * 3 + 1];
@@ -198,6 +262,7 @@ public static class ChunkMeshBuilder
                     buf[offset + 10] = uvY[idx];
                     buf[offset + 11] = skyBri;
                     buf[offset + 12] = blockBri;
+                    buf[offset + 13] = aoValues[idx];
                     count++;
                 }
             }
@@ -293,7 +358,7 @@ public static class ChunkMeshBuilder
 
     private static void EmitVertex(float[] buf, ref int count, float px, float py, float pz,
         float nx, float ny, float nz, float r, float g, float b, float u, float v,
-        float skyBri, float blockBri)
+        float skyBri, float blockBri, float ao = 1.0f)
     {
         int offset = count * ChunkMesh.FloatsPerVertex;
         buf[offset + 0] = px; buf[offset + 1] = py; buf[offset + 2] = pz;
@@ -301,6 +366,7 @@ public static class ChunkMeshBuilder
         buf[offset + 6] = r;  buf[offset + 7] = g;  buf[offset + 8] = b;
         buf[offset + 9] = u;  buf[offset + 10] = v;
         buf[offset + 11] = skyBri; buf[offset + 12] = blockBri;
+        buf[offset + 13] = ao;
         count++;
     }
 
@@ -347,6 +413,46 @@ public static class ChunkMeshBuilder
                 verts[9]=bx; verts[10]=by+1; verts[11]=bz;
                 break;
         }
+    }
+
+    private static float ComputeVertexAO(Chunk chunk, int bx, int by, int bz, int face, int corner, WorldManager world)
+    {
+        int s1x = bx + AONeighborOffsets[face, corner, 0, 0];
+        int s1y = by + AONeighborOffsets[face, corner, 0, 1];
+        int s1z = bz + AONeighborOffsets[face, corner, 0, 2];
+        int s2x = bx + AONeighborOffsets[face, corner, 1, 0];
+        int s2y = by + AONeighborOffsets[face, corner, 1, 1];
+        int s2z = bz + AONeighborOffsets[face, corner, 1, 2];
+        int cx = bx + AONeighborOffsets[face, corner, 2, 0];
+        int cy = by + AONeighborOffsets[face, corner, 2, 1];
+        int cz = bz + AONeighborOffsets[face, corner, 2, 2];
+
+        bool side1 = IsOpaqueForAO(chunk, s1x, s1y, s1z, world);
+        bool side2 = IsOpaqueForAO(chunk, s2x, s2y, s2z, world);
+
+        int aoLevel;
+        if (side1 && side2)
+        {
+            aoLevel = 0; // Both sides block = fully occluded (corner irrelevant)
+        }
+        else
+        {
+            bool cornerBlock = IsOpaqueForAO(chunk, cx, cy, cz, world);
+            aoLevel = 3 - ((side1 ? 1 : 0) + (side2 ? 1 : 0) + (cornerBlock ? 1 : 0));
+        }
+
+        return AOValues[aoLevel];
+    }
+
+    private static bool IsOpaqueForAO(Chunk chunk, int lx, int ly, int lz, WorldManager world)
+    {
+        if (ly < 0 || ly >= GameConfig.WORLD_HEIGHT) return false;
+
+        byte blockType = chunk.GetBlockWithBorder(lx, ly, lz, world);
+        if (blockType == 0) return false;
+
+        ref var data = ref BlockRegistry.Get(blockType);
+        return !data.IsTransparent && !data.IsBillboard;
     }
 
     private static (int skyLevel, int blockLevel) GetSmoothLightLevels(Chunk chunk, int x, int y, int z, int face, WorldManager world)

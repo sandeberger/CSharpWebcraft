@@ -4,6 +4,7 @@ using OpenTK.Windowing.Common;
 using OpenTK.Windowing.Desktop;
 using OpenTK.Windowing.GraphicsLibraryFramework;
 using CSharpWebcraft.Input;
+using CSharpWebcraft.Mob;
 using CSharpWebcraft.Player;
 using CSharpWebcraft.Rendering;
 using CSharpWebcraft.UI;
@@ -25,9 +26,13 @@ public class WebcraftGame : GameWindow
     private LavaFlow _lavaFlow = null!;
     private HudRenderer _hud = null!;
     private WeatherSystem _weather = null!;
+    private MobManager _mobManager = null!;
 
     private bool _wireframe;
     private float _lightUpdateTimer;
+    private int _fps;
+    private int _fpsFrameCount;
+    private float _fpsTimer;
 
     public WebcraftGame()
         : base(
@@ -80,13 +85,14 @@ public class WebcraftGame : GameWindow
         _camera.Position = spawnPos;
         Console.WriteLine($"Spawned at {spawnPos.X:F1}, {spawnPos.Y:F1}, {spawnPos.Z:F1}");
 
+        _mobManager = new MobManager(_world);
         _player = new PlayerController(_camera, _input, _world, _hud, _waterFlow, _lavaFlow);
 
         CursorState = CursorState.Grabbed;
 
         Console.WriteLine("Game loaded. WASD to move, mouse to look, space to jump.");
         Console.WriteLine("Left click to break, right click to place. 1-9 or scroll to select block.");
-        Console.WriteLine("F4 to cycle weather. F3 for wireframe. ESC to quit.");
+        Console.WriteLine("E for inventory. F3 for wireframe. F5 for debug. F4 to cycle weather. ESC to quit.");
     }
 
     protected override void OnUpdateFrame(FrameEventArgs args)
@@ -98,16 +104,45 @@ public class WebcraftGame : GameWindow
 
         _input.Update(KeyboardState, MouseState);
 
-        // ESC to exit
+        // FPS counter
+        _fpsFrameCount++;
+        _fpsTimer += dt;
+        if (_fpsTimer >= 1f)
+        {
+            _fps = _fpsFrameCount;
+            _fpsFrameCount = 0;
+            _fpsTimer = 0;
+        }
+
+        // ESC: close inventory or quit
         if (_input.IsKeyPressed(Keys.Escape))
         {
-            Close();
-            return;
+            if (_hud.IsInventoryOpen)
+            {
+                _hud.IsInventoryOpen = false;
+                CursorState = CursorState.Grabbed;
+            }
+            else
+            {
+                Close();
+                return;
+            }
+        }
+
+        // E: toggle inventory
+        if (_input.IsKeyPressed(Keys.E))
+        {
+            _hud.IsInventoryOpen = !_hud.IsInventoryOpen;
+            CursorState = _hud.IsInventoryOpen ? CursorState.Normal : CursorState.Grabbed;
         }
 
         // F3 wireframe toggle
         if (_input.IsKeyPressed(Keys.F3))
             _wireframe = !_wireframe;
+
+        // F5 debug overlay toggle
+        if (_input.IsKeyPressed(Keys.F5))
+            _hud.ShowDebugOverlay = !_hud.ShowDebugOverlay;
 
         // F4 cycle weather
         if (_input.IsKeyPressed(Keys.F4))
@@ -125,6 +160,36 @@ public class WebcraftGame : GameWindow
         // Time advance
         if (_input.IsKeyPressed(Keys.KeyPadAdd) || _input.IsKeyPressed(Keys.Equal))
             _gameTime.GameHour = (_gameTime.GameHour + 1) % 24;
+
+        // Inventory interaction
+        if (_hud.IsInventoryOpen)
+        {
+            // Click to select block from inventory
+            if (_input.IsMouseButtonPressed(MouseButton.Left))
+            {
+                byte block = _hud.HandleInventoryClick(MouseState.X, MouseState.Y);
+                if (block != 0)
+                {
+                    _hud.SetHotbarSlot(_hud.SelectedSlot, block);
+                    _hud.IsInventoryOpen = false;
+                    CursorState = CursorState.Grabbed;
+                }
+            }
+
+            // Update weather and world but skip player controls
+            _weather.Update(dt);
+            _renderer.Rain.Update(dt, _camera.Position, _world, _weather.Precipitation);
+            _lightUpdateTimer += dt;
+            if (_lightUpdateTimer > 1f)
+            {
+                _lightingEngine.UpdateGlobalSkyLight(_gameTime.GameHour, _weather.Gloom * 0.4f);
+                _lightUpdateTimer = 0;
+            }
+            _world.Update(_camera.Position);
+            _waterFlow.Update(dt);
+            _lavaFlow.Update(dt);
+            return;
+        }
 
         // Hotbar selection (1-9 keys)
         for (int i = 0; i < 9; i++)
@@ -152,6 +217,7 @@ public class WebcraftGame : GameWindow
         }
 
         _player.Update(dt);
+        _mobManager.Update(dt, _camera.Position);
         _world.Update(_camera.Position);
         _waterFlow.Update(dt);
         _lavaFlow.Update(dt);
@@ -163,18 +229,23 @@ public class WebcraftGame : GameWindow
 
         if (_wireframe)
             GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Line);
-        _renderer.Render(_camera, _world, _gameTime, _weather);
-        _hud.Render(_renderer.Atlas, _player.Physics);
+        _renderer.Render(_camera, _world, _gameTime, _weather, _lightingEngine.SkyMultiplier, _player.Physics.IsUnderwater, _mobManager);
+
+        float mouseX = _hud.IsInventoryOpen ? MouseState.X : 0;
+        float mouseY = _hud.IsInventoryOpen ? MouseState.Y : 0;
+        _hud.Render(_renderer.Atlas, _player.Physics,
+            _camera.Position, mouseX, mouseY, _fps, _world.LoadedChunkCount);
+
         if (_wireframe)
             GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Line);
 
         SwapBuffers();
 
-        // FPS in title
+        // Title bar info
         if (_gameTime.FrameCount % 60 == 0)
         {
             string weatherStr = _weather.CurrentWeather != WeatherType.Clear ? $" | Weather: {_weather.CurrentWeather}" : "";
-            Title = $"CSharpWebcraft | FPS: {1.0 / args.Time:F0} | Chunks: {_world.LoadedChunkCount} | Pos: {_camera.Position.X:F1}, {_camera.Position.Y:F1}, {_camera.Position.Z:F1} | Hour: {_gameTime.GameHour:F1}{weatherStr}";
+            Title = $"CSharpWebcraft | FPS: {_fps} | Chunks: {_world.LoadedChunkCount} | Pos: {_camera.Position.X:F1}, {_camera.Position.Y:F1}, {_camera.Position.Z:F1} | Hour: {_gameTime.GameHour:F1}{weatherStr}";
         }
     }
 

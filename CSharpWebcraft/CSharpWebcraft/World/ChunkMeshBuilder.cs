@@ -115,23 +115,23 @@ public static class ChunkMeshBuilder
 
                 if (!shouldDraw) continue;
 
-                // Get lighting
-                int lightLevel = GetSmoothLightLevel(chunk, x, y, z, face, world);
-                float minBri = 0.05f;
-                float bri = minBri + (1f - minBri) * MathF.Pow((float)lightLevel / GameConfig.MAX_LIGHT_LEVEL, GameConfig.LIGHT_GAMMA);
+                // Get separate sky and block light levels
+                var (skyLevel, blockLevel) = GetSmoothLightLevels(chunk, x, y, z, face, world);
+                float skyBri = MathF.Pow((float)skyLevel / GameConfig.MAX_LIGHT_LEVEL, GameConfig.LIGHT_GAMMA);
+                float blockBri = MathF.Pow((float)blockLevel / GameConfig.MAX_LIGHT_LEVEL, GameConfig.LIGHT_GAMMA);
 
                 bool isLava = effectiveType == 15;
                 bool isLamp = effectiveData.LightEmission > 0;
-                if (isLamp) bri = MathF.Max(bri, 2f);
+                if (isLamp) blockBri = MathF.Max(blockBri, 2f);
 
                 uint bCol = effectiveData.Color;
-                if (isLava) { bCol = 0xFF3300; bri = lightLevel < GameConfig.MAX_LIGHT_LEVEL ? 3f : 2.5f; }
+                if (isLava) { bCol = 0xFF3300; blockBri = 2.5f; skyBri = 0f; }
 
-                float r = ((bCol >> 16) & 0xFF) / 255f * bri;
-                float g = ((bCol >> 8) & 0xFF) / 255f * bri;
-                float b = (bCol & 0xFF) / 255f * bri;
+                float r = ((bCol >> 16) & 0xFF) / 255f;
+                float g = ((bCol >> 8) & 0xFF) / 255f;
+                float b = (bCol & 0xFF) / 255f;
 
-                // Water depth fog
+                // Water depth fog (applied to tint color)
                 if (effectiveType == 9)
                 {
                     int waterDepth = GameConfig.WATER_LEVEL - y;
@@ -149,6 +149,23 @@ public static class ChunkMeshBuilder
 
                 // Get face vertices
                 GetFaceVertices(x, y, z, face, out var verts);
+
+                // Lower water top surface so it doesn't sit flush with adjacent blocks
+                if (effectiveType == 9 && face == 0)
+                {
+                    // Check if there's water above - if so, keep full height
+                    byte aboveType = chunk.GetBlockWithBorder(x, y + 1, z, world);
+                    ref var aboveData = ref BlockRegistry.Get(aboveType);
+                    byte effectiveAbove = aboveData.IsWaterlogged ? (byte)9 : aboveType;
+                    if (effectiveAbove != 9)
+                    {
+                        float loweredY = y + 1 - GameConfig.WATER_SURFACE_OFFSET;
+                        verts[1] = loweredY;  // BL
+                        verts[4] = loweredY;  // BR
+                        verts[7] = loweredY;  // TR
+                        verts[10] = loweredY; // TL
+                    }
+                }
 
                 // Normal
                 float nx = FaceOffsets[face][0], ny = FaceOffsets[face][1], nz = FaceOffsets[face][2];
@@ -179,6 +196,8 @@ public static class ChunkMeshBuilder
                     buf[offset + 8] = b;
                     buf[offset + 9] = uvX[idx];
                     buf[offset + 10] = uvY[idx];
+                    buf[offset + 11] = skyBri;
+                    buf[offset + 12] = blockBri;
                     count++;
                 }
             }
@@ -214,31 +233,32 @@ public static class ChunkMeshBuilder
         float u1 = (tex.X + 1) * tileSize;
         float v1 = 1f - tex.Y * tileSize;
 
-        int lightLevel = chunk.GetLightLevel(bx, by, bz);
-        float minBri = 0.05f;
-        float bri = minBri + (1f - minBri) * MathF.Pow((float)lightLevel / GameConfig.MAX_LIGHT_LEVEL, GameConfig.LIGHT_GAMMA);
+        int skyLevel = chunk.GetSkyLightLevel(bx, by, bz);
+        int blockLevel = chunk.GetBlockLightOnly(bx, by, bz);
+        float skyBri = MathF.Pow((float)skyLevel / GameConfig.MAX_LIGHT_LEVEL, GameConfig.LIGHT_GAMMA);
+        float blockBri = MathF.Pow((float)blockLevel / GameConfig.MAX_LIGHT_LEVEL, GameConfig.LIGHT_GAMMA);
         uint bCol = blkData.Color;
-        float r = ((bCol >> 16) & 0xFF) / 255f * bri;
-        float g = ((bCol >> 8) & 0xFF) / 255f * bri;
-        float b = (bCol & 0xFF) / 255f * bri;
+        float r = ((bCol >> 16) & 0xFF) / 255f;
+        float g = ((bCol >> 8) & 0xFF) / 255f;
+        float b = (bCol & 0xFF) / 255f;
 
         var buf = _billboardBuffer!;
 
         // Quad 1: diagonal (0,0,0)-(1,0,1)-(1,1,1)-(0,1,0)
-        EmitVertex(buf, ref _billboardCount, bx, by, bz, BN1X, BN1Y, BN1Z, r, g, b, u0, v0);
-        EmitVertex(buf, ref _billboardCount, bx+1, by, bz+1, BN1X, BN1Y, BN1Z, r, g, b, u1, v0);
-        EmitVertex(buf, ref _billboardCount, bx+1, by+1, bz+1, BN1X, BN1Y, BN1Z, r, g, b, u1, v1);
-        EmitVertex(buf, ref _billboardCount, bx, by, bz, BN1X, BN1Y, BN1Z, r, g, b, u0, v0);
-        EmitVertex(buf, ref _billboardCount, bx+1, by+1, bz+1, BN1X, BN1Y, BN1Z, r, g, b, u1, v1);
-        EmitVertex(buf, ref _billboardCount, bx, by+1, bz, BN1X, BN1Y, BN1Z, r, g, b, u0, v1);
+        EmitVertex(buf, ref _billboardCount, bx, by, bz, BN1X, BN1Y, BN1Z, r, g, b, u0, v0, skyBri, blockBri);
+        EmitVertex(buf, ref _billboardCount, bx+1, by, bz+1, BN1X, BN1Y, BN1Z, r, g, b, u1, v0, skyBri, blockBri);
+        EmitVertex(buf, ref _billboardCount, bx+1, by+1, bz+1, BN1X, BN1Y, BN1Z, r, g, b, u1, v1, skyBri, blockBri);
+        EmitVertex(buf, ref _billboardCount, bx, by, bz, BN1X, BN1Y, BN1Z, r, g, b, u0, v0, skyBri, blockBri);
+        EmitVertex(buf, ref _billboardCount, bx+1, by+1, bz+1, BN1X, BN1Y, BN1Z, r, g, b, u1, v1, skyBri, blockBri);
+        EmitVertex(buf, ref _billboardCount, bx, by+1, bz, BN1X, BN1Y, BN1Z, r, g, b, u0, v1, skyBri, blockBri);
 
         // Quad 2: perpendicular diagonal
-        EmitVertex(buf, ref _billboardCount, bx+1, by, bz, BN2X, BN2Y, BN2Z, r, g, b, u0, v0);
-        EmitVertex(buf, ref _billboardCount, bx, by, bz+1, BN2X, BN2Y, BN2Z, r, g, b, u1, v0);
-        EmitVertex(buf, ref _billboardCount, bx, by+1, bz+1, BN2X, BN2Y, BN2Z, r, g, b, u1, v1);
-        EmitVertex(buf, ref _billboardCount, bx+1, by, bz, BN2X, BN2Y, BN2Z, r, g, b, u0, v0);
-        EmitVertex(buf, ref _billboardCount, bx, by+1, bz+1, BN2X, BN2Y, BN2Z, r, g, b, u1, v1);
-        EmitVertex(buf, ref _billboardCount, bx+1, by+1, bz, BN2X, BN2Y, BN2Z, r, g, b, u0, v1);
+        EmitVertex(buf, ref _billboardCount, bx+1, by, bz, BN2X, BN2Y, BN2Z, r, g, b, u0, v0, skyBri, blockBri);
+        EmitVertex(buf, ref _billboardCount, bx, by, bz+1, BN2X, BN2Y, BN2Z, r, g, b, u1, v0, skyBri, blockBri);
+        EmitVertex(buf, ref _billboardCount, bx, by+1, bz+1, BN2X, BN2Y, BN2Z, r, g, b, u1, v1, skyBri, blockBri);
+        EmitVertex(buf, ref _billboardCount, bx+1, by, bz, BN2X, BN2Y, BN2Z, r, g, b, u0, v0, skyBri, blockBri);
+        EmitVertex(buf, ref _billboardCount, bx, by+1, bz+1, BN2X, BN2Y, BN2Z, r, g, b, u1, v1, skyBri, blockBri);
+        EmitVertex(buf, ref _billboardCount, bx+1, by+1, bz, BN2X, BN2Y, BN2Z, r, g, b, u0, v1, skyBri, blockBri);
     }
 
     private static void EmitFlatBillboard(Chunk chunk, int bx, int by, int bz, ref BlockType blkData)
@@ -252,32 +272,35 @@ public static class ChunkMeshBuilder
         float u1 = (tex.X + 1) * tileSize;
         float v1 = 1f - tex.Y * tileSize;
 
-        int lightLevel = chunk.GetLightLevel(bx, by, bz);
-        float minBri = 0.05f;
-        float bri = minBri + (1f - minBri) * MathF.Pow((float)lightLevel / GameConfig.MAX_LIGHT_LEVEL, GameConfig.LIGHT_GAMMA);
+        int skyLevel = chunk.GetSkyLightLevel(bx, by, bz);
+        int blockLevel = chunk.GetBlockLightOnly(bx, by, bz);
+        float skyBri = MathF.Pow((float)skyLevel / GameConfig.MAX_LIGHT_LEVEL, GameConfig.LIGHT_GAMMA);
+        float blockBri = MathF.Pow((float)blockLevel / GameConfig.MAX_LIGHT_LEVEL, GameConfig.LIGHT_GAMMA);
         uint bCol = blkData.Color;
-        float r = ((bCol >> 16) & 0xFF) / 255f * bri;
-        float g = ((bCol >> 8) & 0xFF) / 255f * bri;
-        float b = (bCol & 0xFF) / 255f * bri;
+        float r = ((bCol >> 16) & 0xFF) / 255f;
+        float g = ((bCol >> 8) & 0xFF) / 255f;
+        float b = (bCol & 0xFF) / 255f;
         float flatY = by + 0.01f;
         var buf = _billboardBuffer!;
 
-        EmitVertex(buf, ref _billboardCount, bx, flatY, bz, 0, 1, 0, r, g, b, u0, v1);
-        EmitVertex(buf, ref _billboardCount, bx+1, flatY, bz, 0, 1, 0, r, g, b, u1, v1);
-        EmitVertex(buf, ref _billboardCount, bx+1, flatY, bz+1, 0, 1, 0, r, g, b, u1, v0);
-        EmitVertex(buf, ref _billboardCount, bx, flatY, bz, 0, 1, 0, r, g, b, u0, v1);
-        EmitVertex(buf, ref _billboardCount, bx+1, flatY, bz+1, 0, 1, 0, r, g, b, u1, v0);
-        EmitVertex(buf, ref _billboardCount, bx, flatY, bz+1, 0, 1, 0, r, g, b, u0, v0);
+        EmitVertex(buf, ref _billboardCount, bx, flatY, bz, 0, 1, 0, r, g, b, u0, v1, skyBri, blockBri);
+        EmitVertex(buf, ref _billboardCount, bx+1, flatY, bz, 0, 1, 0, r, g, b, u1, v1, skyBri, blockBri);
+        EmitVertex(buf, ref _billboardCount, bx+1, flatY, bz+1, 0, 1, 0, r, g, b, u1, v0, skyBri, blockBri);
+        EmitVertex(buf, ref _billboardCount, bx, flatY, bz, 0, 1, 0, r, g, b, u0, v1, skyBri, blockBri);
+        EmitVertex(buf, ref _billboardCount, bx+1, flatY, bz+1, 0, 1, 0, r, g, b, u1, v0, skyBri, blockBri);
+        EmitVertex(buf, ref _billboardCount, bx, flatY, bz+1, 0, 1, 0, r, g, b, u0, v0, skyBri, blockBri);
     }
 
     private static void EmitVertex(float[] buf, ref int count, float px, float py, float pz,
-        float nx, float ny, float nz, float r, float g, float b, float u, float v)
+        float nx, float ny, float nz, float r, float g, float b, float u, float v,
+        float skyBri, float blockBri)
     {
         int offset = count * ChunkMesh.FloatsPerVertex;
         buf[offset + 0] = px; buf[offset + 1] = py; buf[offset + 2] = pz;
         buf[offset + 3] = nx; buf[offset + 4] = ny; buf[offset + 5] = nz;
         buf[offset + 6] = r;  buf[offset + 7] = g;  buf[offset + 8] = b;
         buf[offset + 9] = u;  buf[offset + 10] = v;
+        buf[offset + 11] = skyBri; buf[offset + 12] = blockBri;
         count++;
     }
 
@@ -326,29 +349,29 @@ public static class ChunkMeshBuilder
         }
     }
 
-    private static int GetSmoothLightLevel(Chunk chunk, int x, int y, int z, int face, WorldManager world)
+    private static (int skyLevel, int blockLevel) GetSmoothLightLevels(Chunk chunk, int x, int y, int z, int face, WorldManager world)
     {
-        byte curB = chunk.GetBlock(x, y, z);
-        if (curB == 15) return GameConfig.MAX_LIGHT_LEVEL + 8;
+        int baseSky = chunk.GetSkyLightLevel(x, y, z);
+        int baseBlock = chunk.GetBlockLightOnly(x, y, z);
 
-        ref var curBD = ref BlockRegistry.Get(curB);
-        if (curBD.LightEmission > 0) return Math.Max(curBD.LightEmission, 3);
-
-        int baseL = chunk.GetLightLevel(x, y, z);
         int ax = x + FaceOffsets[face][0];
         int ay = y + FaceOffsets[face][1];
         int az = z + FaceOffsets[face][2];
 
-        int nL;
+        int nSky, nBlock;
         if (ax >= 0 && ax < GameConfig.CHUNK_SIZE && ay >= 0 && ay < GameConfig.WORLD_HEIGHT && az >= 0 && az < GameConfig.CHUNK_SIZE)
-            nL = chunk.GetLightLevel(ax, ay, az);
+        {
+            nSky = chunk.GetSkyLightLevel(ax, ay, az);
+            nBlock = chunk.GetBlockLightOnly(ax, ay, az);
+        }
         else
         {
             int wx = chunk.X * GameConfig.CHUNK_SIZE + ax;
             int wz = chunk.Z * GameConfig.CHUNK_SIZE + az;
-            nL = world.GetLightLevelAt(wx, ay, wz);
+            nSky = world.GetSkyLightAt(wx, ay, wz);
+            nBlock = world.GetBlockLightAt(wx, ay, wz);
         }
 
-        return Math.Max(Math.Max(baseL, nL), 0);
+        return (Math.Max(baseSky, nSky), Math.Max(baseBlock, nBlock));
     }
 }

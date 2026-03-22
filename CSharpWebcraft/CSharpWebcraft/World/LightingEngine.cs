@@ -6,36 +6,41 @@ namespace CSharpWebcraft.World;
 public class LightingEngine
 {
     private int _globalSkyLightLevel = GameConfig.MAX_LIGHT_LEVEL;
+    private float _skyMultiplier = 1f;
 
     public int GlobalSkyLightLevel => _globalSkyLightLevel;
+    public float SkyMultiplier => _skyMultiplier;
 
     public void UpdateGlobalSkyLight(float gameHour, float weatherDimming = 0f)
     {
-        int newSkyLight;
+        float skyFactor;
         if (gameHour >= 7 && gameHour < 17)
-            newSkyLight = GameConfig.MAX_LIGHT_LEVEL;
+            skyFactor = 1f;
         else if (gameHour >= 5 && gameHour < 7)
-            newSkyLight = (int)((gameHour - 5) / 2f * GameConfig.MAX_LIGHT_LEVEL);
+            skyFactor = (gameHour - 5) / 2f;
         else if (gameHour >= 17 && gameHour < 19)
-            newSkyLight = (int)((1 - (gameHour - 17) / 2f) * GameConfig.MAX_LIGHT_LEVEL);
+            skyFactor = 1f - (gameHour - 17) / 2f;
         else
-            newSkyLight = 0;
+            skyFactor = 0f;
 
         // Weather dimming (rain/storm reduces sky light)
-        if (weatherDimming > 0 && newSkyLight > 0)
-            newSkyLight = Math.Max(0, (int)(newSkyLight * (1f - weatherDimming)));
+        if (weatherDimming > 0 && skyFactor > 0)
+            skyFactor *= (1f - weatherDimming);
 
-        _globalSkyLightLevel = newSkyLight;
+        _skyMultiplier = skyFactor;
+        _globalSkyLightLevel = (int)(skyFactor * GameConfig.MAX_LIGHT_LEVEL);
     }
 
     public void CalculateInitialSkyLight(Chunk chunk)
     {
+        // Always store sky light at MAX - represents sky exposure, not actual brightness.
+        // The actual brightness is applied at render time via uSkyMultiplier in the shader.
         for (int x = 0; x < GameConfig.CHUNK_SIZE; x++)
         for (int z = 0; z < GameConfig.CHUNK_SIZE; z++)
         {
             int height = chunk.GetHeight(x, z);
             for (int y = height; y < GameConfig.WORLD_HEIGHT; y++)
-                chunk.SetSkyLight(x, y, z, (byte)_globalSkyLightLevel);
+                chunk.SetSkyLight(x, y, z, (byte)GameConfig.MAX_LIGHT_LEVEL);
             for (int y = 0; y < height; y++)
                 chunk.SetSkyLight(x, y, z, 0);
         }
@@ -135,7 +140,7 @@ public class LightingEngine
             int height = chunk.GetHeight(x, z);
             if (height > 0 && height < GameConfig.WORLD_HEIGHT)
             {
-                int surfaceLevel = Math.Max(0, _globalSkyLightLevel - 2);
+                int surfaceLevel = Math.Max(0, GameConfig.MAX_LIGHT_LEVEL - 2);
                 chunk.SetSurfaceLight(x, height - 1, z, (byte)surfaceLevel);
                 if (surfaceLevel > 0)
                     queue.Push((x, height - 1, z, surfaceLevel));

@@ -114,9 +114,15 @@ public class WorldManager
             }
 
             _loadedChunks[key] = chunk;
+
+            // Propagate block light and surface light now that chunk is in the world
+            _lightingEngine.PropagateBlockLight(chunk, this);
+            if (GameConfig.SURFACE_LIGHT_ENABLED)
+                _lightingEngine.PropagateSurfaceLight(chunk, this);
+
             chunk.NeedsMeshUpdate = true;
 
-            // Mark neighbor chunks dirty so they rebuild border faces
+            // Mark neighbor chunks dirty so they rebuild border faces and light
             MarkChunkDirty(chunk.X - 1, chunk.Z);
             MarkChunkDirty(chunk.X + 1, chunk.Z);
             MarkChunkDirty(chunk.X, chunk.Z - 1);
@@ -206,15 +212,45 @@ public class WorldManager
         if (chunk == null) return;
         int lx = worldX - chunkX * GameConfig.CHUNK_SIZE;
         int lz = worldZ - chunkZ * GameConfig.CHUNK_SIZE;
+
+        // Check if old or new block emits light (need to recalculate if either does)
+        byte oldType = chunk.GetBlock(lx, worldY, lz);
+        ref var oldData = ref BlockRegistry.Get(oldType);
+        ref var newData = ref BlockRegistry.Get(type);
+        bool lightChanged = oldData.LightEmission > 0 || newData.LightEmission > 0;
+
+        // Also recalculate light if placing/removing a solid block (affects sky/surface light propagation)
+        bool solidityChanged = oldData.IsTransparent != newData.IsTransparent;
+
         chunk.SetBlock(lx, worldY, lz, type);
         chunk.UpdateHeight(lx, lz);
-        chunk.NeedsMeshUpdate = true;
 
-        // Update neighbors if on border
-        if (lx == 0) MarkChunkDirty(chunkX - 1, chunkZ);
-        if (lx == GameConfig.CHUNK_SIZE - 1) MarkChunkDirty(chunkX + 1, chunkZ);
-        if (lz == 0) MarkChunkDirty(chunkX, chunkZ - 1);
-        if (lz == GameConfig.CHUNK_SIZE - 1) MarkChunkDirty(chunkX, chunkZ + 1);
+        if (lightChanged || solidityChanged)
+        {
+            // Recalculate sky light (placement may block/expose sky)
+            _lightingEngine.CalculateInitialSkyLight(chunk);
+            // Recalculate and propagate block light for this chunk
+            _lightingEngine.CalculateInitialBlockLight(chunk);
+            _lightingEngine.PropagateBlockLight(chunk, this);
+            if (GameConfig.SURFACE_LIGHT_ENABLED)
+                _lightingEngine.PropagateSurfaceLight(chunk, this);
+
+            // Mark all neighbors dirty since light may have propagated into them
+            MarkChunkDirty(chunkX - 1, chunkZ);
+            MarkChunkDirty(chunkX + 1, chunkZ);
+            MarkChunkDirty(chunkX, chunkZ - 1);
+            MarkChunkDirty(chunkX, chunkZ + 1);
+        }
+        else
+        {
+            // Update neighbors if on border
+            if (lx == 0) MarkChunkDirty(chunkX - 1, chunkZ);
+            if (lx == GameConfig.CHUNK_SIZE - 1) MarkChunkDirty(chunkX + 1, chunkZ);
+            if (lz == 0) MarkChunkDirty(chunkX, chunkZ - 1);
+            if (lz == GameConfig.CHUNK_SIZE - 1) MarkChunkDirty(chunkX, chunkZ + 1);
+        }
+
+        chunk.NeedsMeshUpdate = true;
     }
 
     public int GetLightLevelAt(int worldX, int worldY, int worldZ)
@@ -228,6 +264,31 @@ public class WorldManager
         int lx = worldX - chunkX * GameConfig.CHUNK_SIZE;
         int lz = worldZ - chunkZ * GameConfig.CHUNK_SIZE;
         return chunk.GetLightLevel(lx, worldY, lz);
+    }
+
+    public int GetSkyLightAt(int worldX, int worldY, int worldZ)
+    {
+        if (worldY < 0 || worldY >= GameConfig.WORLD_HEIGHT) return 0;
+        int chunkX = worldX >= 0 ? worldX >> GameConfig.CHUNK_SHIFT : ((worldX + 1) / GameConfig.CHUNK_SIZE) - 1;
+        int chunkZ = worldZ >= 0 ? worldZ >> GameConfig.CHUNK_SHIFT : ((worldZ + 1) / GameConfig.CHUNK_SIZE) - 1;
+        var chunk = GetChunkDirect(chunkX, chunkZ);
+        if (chunk == null)
+            return worldY > GameConfig.WATER_LEVEL ? GameConfig.MAX_LIGHT_LEVEL : 0;
+        int lx = worldX - chunkX * GameConfig.CHUNK_SIZE;
+        int lz = worldZ - chunkZ * GameConfig.CHUNK_SIZE;
+        return chunk.GetSkyLightLevel(lx, worldY, lz);
+    }
+
+    public int GetBlockLightAt(int worldX, int worldY, int worldZ)
+    {
+        if (worldY < 0 || worldY >= GameConfig.WORLD_HEIGHT) return 0;
+        int chunkX = worldX >= 0 ? worldX >> GameConfig.CHUNK_SHIFT : ((worldX + 1) / GameConfig.CHUNK_SIZE) - 1;
+        int chunkZ = worldZ >= 0 ? worldZ >> GameConfig.CHUNK_SHIFT : ((worldZ + 1) / GameConfig.CHUNK_SIZE) - 1;
+        var chunk = GetChunkDirect(chunkX, chunkZ);
+        if (chunk == null) return 0;
+        int lx = worldX - chunkX * GameConfig.CHUNK_SIZE;
+        int lz = worldZ - chunkZ * GameConfig.CHUNK_SIZE;
+        return chunk.GetBlockLightOnly(lx, worldY, lz);
     }
 
     public int GetColumnHeight(int worldX, int worldZ)

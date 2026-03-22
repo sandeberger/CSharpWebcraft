@@ -134,6 +134,27 @@ public class Chunk
         return 0;
     }
 
+    /// <summary>Get sky-dependent light (max of sky, surface) - affected by time of day</summary>
+    public int GetSkyLightLevel(int x, int y, int z)
+    {
+        if ((x | y | z) >= 0 && x < GameConfig.CHUNK_SIZE && y < GameConfig.WORLD_HEIGHT && z < GameConfig.CHUNK_SIZE)
+        {
+            int idx = (y << GameConfig.CHUNK_Y_SHIFT) | (z << GameConfig.CHUNK_SHIFT) | x;
+            int sky = SkyLight[idx];
+            int surface = SurfaceLight[idx];
+            return sky > surface ? sky : surface;
+        }
+        return 0;
+    }
+
+    /// <summary>Get block light only (from emissive blocks, not affected by time)</summary>
+    public int GetBlockLightOnly(int x, int y, int z)
+    {
+        if ((x | y | z) >= 0 && x < GameConfig.CHUNK_SIZE && y < GameConfig.WORLD_HEIGHT && z < GameConfig.CHUNK_SIZE)
+            return BlockLight[(y << GameConfig.CHUNK_Y_SHIFT) | (z << GameConfig.CHUNK_SHIFT) | x];
+        return 0;
+    }
+
     public int GetHeight(int x, int z)
     {
         if ((x | z) >= 0 && x < GameConfig.CHUNK_SIZE && z < GameConfig.CHUNK_SIZE)

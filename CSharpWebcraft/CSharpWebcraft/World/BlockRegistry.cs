@@ -21,7 +21,7 @@ public static class BlockRegistry
         Register(4, "snow", tex: BlockTexture.All(4,0));
         Register(5, "sand", color: 0xF0E68C, tex: BlockTexture.All(6,0));
         Register(7, "coal", tex: BlockTexture.All(5,0));
-        Register(9, "water_block", color: 0x1E90FF, transparent: true, opacity: 0.56f, tex: BlockTexture.All(7,0));
+        Register(9, "water_block", color: 0x1E90FF, transparent: true, opacity: 0.56f, tex: BlockTexture.All(8,3));
         Register(10, "wood", tex: BlockTexture.TopSideBottom(8,0, 7,0, 8,0));
         Register(11, "leaves", billboard: true, tex: BlockTexture.All(9,0));
         Register(12, "tall_grass", billboard: true, tex: BlockTexture.All(10,0));

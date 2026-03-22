@@ -5,7 +5,7 @@ public static class GameConfig
     public const int BLOCK_SIZE = 1;
     public const int CHUNK_SIZE = 16;
     public const int WORLD_HEIGHT = 100;
-    public const int RENDER_DISTANCE = 4;
+    public const int RENDER_DISTANCE = 8;
     public const int WATER_LEVEL = 64;
     public const int ATLAS_TILE_SIZE = 16;
     public const int MAX_LIGHT_LEVEL = 15;
@@ -39,12 +39,12 @@ public static class GameConfig
     public const float CAVE_THRESHOLD = -0.75f;
     public const int CAVE_Y_MIN = WATER_LEVEL + 5;
     public const int CAVE_Y_MAX = WATER_LEVEL + 25;
-    public const bool WORM_ENABLED = false;
+    public const bool WORM_ENABLED = true;
     public const int WORMS_PER_CHUNK = 4;
     public const float WORM_START_CHANCE = 0.8f;
     public const int WORM_MAX_LENGTH = 120;
-    public const float WORM_RADIUS = 1.8f;
-    public const float WORM_STEP_SIZE = 0.8f;
+    public const float WORM_RADIUS = 1.4f;
+    public const float WORM_STEP_SIZE = 0.6f;
     public const float WORM_TURN_NOISE_SCALE = 15.0f;
     public const float WORM_TURN_STRENGTH = 0.4f;
     public const int WORM_Y_MIN = WATER_LEVEL + 5;
@@ -58,10 +58,10 @@ public static class GameConfig
     public const int CAVE_FBM_Y_MIN = 5;
     public const int CAVE_FBM_Y_MAX = WATER_LEVEL + 25;
     public const bool TREE_ENABLED = true;
-    public const float TREE_FREQUENCY = 0.015f;
+    public const float TREE_FREQUENCY = 0.055f;
     public const int MIN_TRUNK_HEIGHT = 4;
     public const int MAX_TRUNK_HEIGHT = 6;
-    public const int LEAF_RADIUS = 3;
+    public const int LEAF_RADIUS = 4;
     public const int CLOUD_TEXTURE_SIZE = 256;
     public const int CLOUD_HEIGHT = WORLD_HEIGHT + 30;
     public const float CLOUD_SPEED_X = 0.003f;
@@ -134,4 +134,9 @@ public static class GameConfig
     public const int PLAYER_MAX_HEALTH = 10;
     public const float INVULNERABILITY_DURATION = 1.0f;
     public const float RAYCAST_RANGE = 6f;
+
+    // Water surface visual offset (how far below block top water sits, in block units)
+    public const float WATER_SURFACE_OFFSET = 0.125f; // 2/16 of a block
+    public const float UNDERWATER_FOG_DENSITY = 0.08f;
+    public const uint UNDERWATER_FOG_COLOR = 0x1A4466;
 }

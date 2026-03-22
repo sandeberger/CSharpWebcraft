@@ -1,6 +1,7 @@
 using OpenTK.Graphics.OpenGL4;
 using OpenTK.Mathematics;
 using CSharpWebcraft.Core;
+using CSharpWebcraft.Mob;
 using CSharpWebcraft.Weather;
 using CSharpWebcraft.World;
 
@@ -12,6 +13,7 @@ public class Renderer
     private Shader _skyShader = null!;
     private TextureAtlas _atlas = null!;
     private readonly FrustumCuller _frustumCuller = new();
+    private MobRenderer _mobRenderer = null!;
 
     public TextureAtlas Atlas => _atlas;
 
@@ -38,6 +40,8 @@ public class Renderer
         _cloudRenderer.Init();
         _rainRenderer = new RainRenderer();
         _rainRenderer.Init();
+        _mobRenderer = new MobRenderer();
+        _mobRenderer.Init();
 
         CreateSkyDome();
 
@@ -48,9 +52,12 @@ public class Renderer
 
     public RainRenderer Rain => _rainRenderer;
 
-    public void Render(Camera camera, WorldManager world, GameTime gameTime, WeatherSystem? weather = null)
+    public void Render(Camera camera, WorldManager world, GameTime gameTime, WeatherSystem? weather = null, float skyMultiplier = 1f, bool isUnderwater = false, MobManager? mobManager = null)
     {
-        GL.ClearColor(0.53f, 0.81f, 0.92f, 1f);
+        if (isUnderwater)
+            GL.ClearColor(0.05f, 0.15f, 0.30f, 1f);
+        else
+            GL.ClearColor(0.53f, 0.81f, 0.92f, 1f);
         GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 
         Matrix4 view = camera.GetViewMatrix();
@@ -62,11 +69,22 @@ public class Renderer
             _frustumCuller.Update(vp, camera.Position, camera.Yaw, camera.Pitch);
 
         // Sky (render first, at max depth)
-        RenderSky(camera, gameTime, weather);
+        if (!isUnderwater)
+            RenderSky(camera, gameTime, weather);
 
         // Calculate fog color from time of day + weather
-        Vector3 fogColor = GetFogColor(gameTime.GameHour, weather);
-        float fogDensity = GameConfig.FOG_DENSITY + (weather?.FogDensityOffset ?? 0);
+        Vector3 fogColor;
+        float fogDensity;
+        if (isUnderwater)
+        {
+            fogColor = Utils.MathHelper.ColorFromHex(GameConfig.UNDERWATER_FOG_COLOR);
+            fogDensity = GameConfig.UNDERWATER_FOG_DENSITY;
+        }
+        else
+        {
+            fogColor = GetFogColor(gameTime.GameHour, weather);
+            fogDensity = GameConfig.FOG_DENSITY + (weather?.FogDensityOffset ?? 0);
+        }
 
         // Clouds (after sky, before terrain)
         if (weather != null)
@@ -79,6 +97,7 @@ public class Renderer
         _blockShader.SetVector3("uFogColor", fogColor);
         _blockShader.SetFloat("uFogDensity", fogDensity);
         _blockShader.SetFloat("uAlphaTest", 0.01f);
+        _blockShader.SetFloat("uSkyMultiplier", skyMultiplier);
         _blockShader.SetInt("uTexture", 0);
         _atlas.Use();
 
@@ -117,6 +136,13 @@ public class Renderer
             }
         }
         GL.Enable(EnableCap.CullFace);
+
+        // Mob pass (opaque, between billboards and transparent)
+        if (mobManager != null)
+        {
+            _blockShader.SetFloat("uAlphaTest", 0.01f);
+            _mobRenderer.Render(mobManager, _blockShader, world, skyMultiplier);
+        }
 
         // Transparent pass (blending)
         GL.Enable(EnableCap.Blend);
@@ -329,6 +355,7 @@ public class Renderer
         _atlas?.Dispose();
         _cloudRenderer?.Dispose();
         _rainRenderer?.Dispose();
+        _mobRenderer?.Dispose();
         GL.DeleteBuffer(_skyVbo);
         GL.DeleteVertexArray(_skyVao);
     }

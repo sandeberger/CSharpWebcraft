@@ -17,6 +17,7 @@ public static class TextureGenerator
 
         DrawWater(8, 3);
         DrawFont();
+        DrawSeaweed(13, 0);
         DrawSandstone(14, 0);
         DrawIce(15, 0);
         DrawSnowGrassTop(1, 1);
@@ -553,6 +554,31 @@ public static class TextureGenerator
                 {
                     float h = Hash(cx + 128, cy + 32);
                     Px(tx, ty, cx, cy, 30 + h * 20, 130 + h * 40 + t * 30, 45 + h * 15);
+                }
+            }
+        }
+    }
+
+    static void DrawSeaweed(int tx, int ty)
+    {
+        ClearTile(tx, ty);
+        // Wavy strands of dark green/brown seaweed
+        int[][] strands = { new[]{4,15,3,2}, new[]{8,15,9,1}, new[]{12,15,11,3}, new[]{6,15,7,4} };
+        foreach (var s in strands)
+        {
+            int steps = s[1] - s[3];
+            for (int i = 0; i <= steps; i++)
+            {
+                float t = steps > 0 ? (float)i / steps : 0;
+                int cx = (int)MathF.Round(s[0] + (s[2] - s[0]) * t + MathF.Sin(t * 4) * 1.5f);
+                int cy = (int)MathF.Round(s[1] - i);
+                if (cx >= 0 && cx < 16 && cy >= 0 && cy < 16)
+                {
+                    float h = Hash(cx + 200, cy + 50);
+                    Px(tx, ty, cx, cy, 20 + h * 15, 80 + h * 30 + t * 20, 25 + h * 10);
+                    // Thicker strands - add adjacent pixel
+                    if (cx + 1 < 16)
+                        Px(tx, ty, cx + 1, cy, 25 + h * 12, 75 + h * 25 + t * 15, 20 + h * 10);
                 }
             }
         }

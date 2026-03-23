@@ -23,6 +23,7 @@ public class WorldManager
     private int _lastPlayerChunkZ = int.MinValue;
 
     public int LoadedChunkCount => _loadedChunks.Count;
+    public SimplexNoise Noise => _noise;
 
     public WorldManager(int? seed = null)
     {

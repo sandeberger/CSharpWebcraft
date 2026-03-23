@@ -2,6 +2,7 @@ using OpenTK.Graphics.OpenGL4;
 using OpenTK.Mathematics;
 using CSharpWebcraft.Core;
 using CSharpWebcraft.Mob;
+using CSharpWebcraft.Mob.Critter;
 using CSharpWebcraft.Weather;
 using CSharpWebcraft.World;
 
@@ -14,6 +15,7 @@ public class Renderer
     private TextureAtlas _atlas = null!;
     private readonly FrustumCuller _frustumCuller = new();
     private MobRenderer _mobRenderer = null!;
+    private CritterRenderer _critterRenderer = null!;
     private StarRenderer _starRenderer = null!;
     private PostProcessing _postProcessing = null!;
     private readonly System.Diagnostics.Stopwatch _timer = System.Diagnostics.Stopwatch.StartNew();
@@ -45,6 +47,8 @@ public class Renderer
         _rainRenderer.Init();
         _mobRenderer = new MobRenderer();
         _mobRenderer.Init();
+        _critterRenderer = new CritterRenderer();
+        _critterRenderer.Init();
         _starRenderer = new StarRenderer();
         _starRenderer.Init();
         _postProcessing = new PostProcessing();
@@ -59,7 +63,7 @@ public class Renderer
 
     public RainRenderer Rain => _rainRenderer;
 
-    public void Render(Camera camera, WorldManager world, GameTime gameTime, WeatherSystem? weather = null, float skyMultiplier = 1f, bool isUnderwater = false, MobManager? mobManager = null)
+    public void Render(Camera camera, WorldManager world, GameTime gameTime, WeatherSystem? weather = null, float skyMultiplier = 1f, bool isUnderwater = false, MobManager? mobManager = null, CritterManager? critterManager = null)
     {
         // Render scene to HDR FBO for post-processing
         _postProcessing.BeginScenePass();
@@ -164,6 +168,15 @@ public class Renderer
         {
             _blockShader.SetFloat("uAlphaTest", 0.01f);
             _mobRenderer.Render(mobManager, _blockShader, world, skyMultiplier);
+        }
+
+        // Critter pass (ambient creatures — billboards need no cull, low alpha test)
+        if (critterManager != null)
+        {
+            _blockShader.SetFloat("uAlphaTest", 0.01f);
+            GL.Disable(EnableCap.CullFace);
+            _critterRenderer.Render(critterManager, _blockShader, world, skyMultiplier);
+            GL.Enable(EnableCap.CullFace);
         }
 
         // Transparent pass (blending) — enable water PBR
@@ -405,6 +418,7 @@ public class Renderer
         _cloudRenderer?.Dispose();
         _rainRenderer?.Dispose();
         _mobRenderer?.Dispose();
+        _critterRenderer?.Dispose();
         _starRenderer?.Dispose();
         _postProcessing?.Dispose();
         GL.DeleteBuffer(_skyVbo);

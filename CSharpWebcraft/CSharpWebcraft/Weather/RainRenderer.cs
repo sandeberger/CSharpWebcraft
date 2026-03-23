@@ -55,16 +55,22 @@ public class RainRenderer : IDisposable
             int idx = i * 3;
             _positions[idx + 1] -= _velocities[i] * dt;
 
-            // Check terrain collision
+            // Check terrain collision — stop at ground or water surface, whichever is higher
             int wx = (int)MathF.Floor(_positions[idx]);
             int wz = (int)MathF.Floor(_positions[idx + 2]);
             int height = world.GetColumnHeight(wx, wz);
+            int stopHeight = Math.Max(height, GameConfig.WATER_LEVEL);
 
             float dx = _positions[idx] - playerPos.X;
             float dz = _positions[idx + 2] - playerPos.Z;
             bool tooFar = dx * dx + dz * dz > RAIN_AREA * RAIN_AREA * 1.5f;
 
-            if (_positions[idx + 1] <= height || tooFar)
+            // Also check if particle is inside solid terrain (cave ceilings)
+            int py = (int)MathF.Floor(_positions[idx + 1]);
+            byte block = world.GetBlockAt(wx, py, wz);
+            bool insideTerrain = block != 0 && block != 9;
+
+            if (_positions[idx + 1] <= stopHeight || tooFar || insideTerrain)
                 RespawnParticle(i, playerPos, baseSpeed);
         }
     }
@@ -73,9 +79,10 @@ public class RainRenderer : IDisposable
     {
         if (precipitation <= 0.01f) return;
 
-        // Hide rain if player is underground
-        int playerHeight = world.GetColumnHeight((int)MathF.Floor(playerPos.X), (int)MathF.Floor(playerPos.Z));
-        if (playerPos.Y < playerHeight) return;
+        // Hide rain if player is underground or underwater
+        int playerGroundHeight = world.GetColumnHeight((int)MathF.Floor(playerPos.X), (int)MathF.Floor(playerPos.Z));
+        int playerCeiling = Math.Max(playerGroundHeight, GameConfig.WATER_LEVEL);
+        if (playerPos.Y < playerCeiling) return;
 
         float opacity = MathF.Min(0.18f + precipitation * 0.75f, 0.9f);
 

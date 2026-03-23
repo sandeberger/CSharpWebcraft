@@ -18,6 +18,10 @@ public class PlayerPhysics
     private float _stepUpProgress;
     private float _swimStrokeCooldown;
 
+    // Audio events
+    public Action? OnJump;
+    public Action? OnSplash;
+
     // Health & oxygen
     public int Health { get; set; } = GameConfig.PLAYER_MAX_HEALTH;
     public int MaxHealth => GameConfig.PLAYER_MAX_HEALTH;
@@ -156,6 +160,7 @@ public class PlayerPhysics
         {
             VelocityY = GameConfig.JUMP_FORCE;
             IsOnGround = false;
+            OnJump?.Invoke();
         }
     }
 

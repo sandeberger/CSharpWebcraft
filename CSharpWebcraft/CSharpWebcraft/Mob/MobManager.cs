@@ -76,27 +76,56 @@ public class MobManager
 
         Vector3 spawnPos = new(spawnX, groundY + 1.5f, spawnZ);
 
-        // Decide mob type (70% slime, 30% spider)
-        if (Random.Shared.NextSingle() < 0.7f)
+        // Terrain suitability determines mob type
+        bool suitableForSpiders = IsSuitableForSpiders(ix, iz, groundY);
+
+        if (suitableForSpiders && Random.Shared.NextSingle() < 0.7f)
         {
-            // Spawn slime group (1-3)
+            // 70% spider on flat, dry terrain (matching JS)
+            var spider = new SpiderMob(spawnPos);
+            _mobs.Add(spider);
+        }
+        else
+        {
+            // Slime group (1-3) on unsuitable terrain or 30% chance on suitable
             int count = 1 + Random.Shared.Next(3);
             for (int i = 0; i < count && _mobs.Count < MaxMobs; i++)
             {
                 float offsetX = (Random.Shared.NextSingle() - 0.5f) * 3f;
                 float offsetZ = (Random.Shared.NextSingle() - 0.5f) * 3f;
-                float size = 0.5f + Random.Shared.NextSingle() * 1f; // 0.5 to 1.5
+                float size = 0.5f + Random.Shared.NextSingle() * 1f;
 
                 var slime = new CubeSlime(spawnPos + new Vector3(offsetX, 0, offsetZ), size);
                 _mobs.Add(slime);
                 _slimes.Add(slime);
             }
         }
-        else
+    }
+
+    /// <summary>
+    /// Check if terrain is suitable for spider spawning (flat, dry, above water).
+    /// </summary>
+    private bool IsSuitableForSpiders(int ix, int iz, int groundY)
+    {
+        // Must be above water level
+        if (groundY <= GameConfig.WATER_LEVEL) return false;
+
+        // Check surface block -- no water
+        byte surfaceBlock = _world.GetBlockAt(ix, groundY, iz);
+        if (surfaceBlock == 9) return false;
+
+        // Check terrain flatness: sample 4 nearby points
+        (int x, int z)[] samples = { (ix - 2, iz - 2), (ix + 2, iz - 2), (ix - 2, iz + 2), (ix + 2, iz + 2) };
+        int maxHeightDiff = 0;
+
+        foreach (var (sx, sz) in samples)
         {
-            var spider = new SpiderMob(spawnPos);
-            _mobs.Add(spider);
+            int nearbyY = _world.GetColumnHeight(sx, sz);
+            int diff = Math.Abs(nearbyY - groundY);
+            if (diff > maxHeightDiff) maxHeightDiff = diff;
         }
+
+        return maxHeightDiff <= 3;
     }
 
     /// <summary>

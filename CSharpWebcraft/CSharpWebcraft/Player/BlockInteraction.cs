@@ -12,6 +12,10 @@ public class BlockInteraction
     private readonly WaterFlow? _waterFlow;
     private readonly LavaFlow? _lavaFlow;
 
+    // Audio events
+    public Action? OnBlockBreak;
+    public Action? OnBlockPlace;
+
     public BlockInteraction(Camera camera, WorldManager world, WaterFlow? waterFlow = null, LavaFlow? lavaFlow = null)
     {
         _camera = camera;
@@ -31,6 +35,7 @@ public class BlockInteraction
                 _world.SetBlockAt(hitPos.X, hitPos.Y, hitPos.Z, 0);
                 _waterFlow?.OnBlockChanged(hitPos.X, hitPos.Y, hitPos.Z);
                 _lavaFlow?.OnBlockChanged(hitPos.X, hitPos.Y, hitPos.Z);
+                OnBlockBreak?.Invoke();
             }
         }
     }
@@ -59,6 +64,7 @@ public class BlockInteraction
             _world.SetBlockAt(px, py, pz, blockType);
             _waterFlow?.OnBlockChanged(px, py, pz);
             _lavaFlow?.OnBlockChanged(px, py, pz);
+            OnBlockPlace?.Invoke();
         }
     }
 

@@ -3,8 +3,10 @@ using OpenTK.Mathematics;
 using OpenTK.Windowing.Common;
 using OpenTK.Windowing.Desktop;
 using OpenTK.Windowing.GraphicsLibraryFramework;
+using CSharpWebcraft.Audio;
 using CSharpWebcraft.Input;
 using CSharpWebcraft.Mob;
+using CSharpWebcraft.Mob.Critter;
 using CSharpWebcraft.Player;
 using CSharpWebcraft.Rendering;
 using CSharpWebcraft.UI;
@@ -27,6 +29,10 @@ public class WebcraftGame : GameWindow
     private HudRenderer _hud = null!;
     private WeatherSystem _weather = null!;
     private MobManager _mobManager = null!;
+    private CritterManager _critterManager = null!;
+    private AudioManager _audioManager = null!;
+    private SfxSystem _sfx = null!;
+    private MusicPlayer _music = null!;
 
     private bool _wireframe;
     private float _lightUpdateTimer;
@@ -86,13 +92,28 @@ public class WebcraftGame : GameWindow
         Console.WriteLine($"Spawned at {spawnPos.X:F1}, {spawnPos.Y:F1}, {spawnPos.Z:F1}");
 
         _mobManager = new MobManager(_world);
+        _critterManager = new CritterManager(_world);
         _player = new PlayerController(_camera, _input, _world, _hud, _waterFlow, _lavaFlow);
+
+        // Audio
+        _audioManager = new AudioManager();
+        _audioManager.Init();
+        _audioManager.LoadAllSounds();
+        _sfx = new SfxSystem(_audioManager, _world, _world.Noise);
+        _music = new MusicPlayer(_audioManager);
+        _music.Start();
+
+        // Wire audio events
+        _player.Physics.OnJump += () => _sfx.PlayJump();
+        _player.BlockInteraction.OnBlockBreak += () => _sfx.PlayBlockBreak();
+        _player.BlockInteraction.OnBlockPlace += () => _sfx.PlayBlockPlace();
+        _weather.OnLightning += delay => _sfx.PlayThunder(delay);
 
         CursorState = CursorState.Grabbed;
 
         Console.WriteLine("Game loaded. WASD to move, mouse to look, space to jump.");
         Console.WriteLine("Left click to break, right click to place. 1-9 or scroll to select block.");
-        Console.WriteLine("E for inventory. F3 for wireframe. F5 for debug. F4 to cycle weather. ESC to quit.");
+        Console.WriteLine("E for inventory. F3 for wireframe. F5 for debug. F4 to cycle weather. M to toggle music. ESC to quit.");
     }
 
     protected override void OnUpdateFrame(FrameEventArgs args)
@@ -143,6 +164,10 @@ public class WebcraftGame : GameWindow
         // F5 debug overlay toggle
         if (_input.IsKeyPressed(Keys.F5))
             _hud.ShowDebugOverlay = !_hud.ShowDebugOverlay;
+
+        // M toggle music
+        if (_input.IsKeyPressed(Keys.M))
+            _music?.Toggle();
 
         // F4 cycle weather
         if (_input.IsKeyPressed(Keys.F4))
@@ -218,9 +243,15 @@ public class WebcraftGame : GameWindow
 
         _player.Update(dt);
         _mobManager.Update(dt, _camera.Position);
+        _critterManager.Update(dt, _camera.Position, _gameTime.GameHour, _weather.Precipitation);
         _world.Update(_camera.Position);
         _waterFlow.Update(dt);
         _lavaFlow.Update(dt);
+
+        // Audio
+        _sfx?.Update(dt, _camera.Position, _player.Physics, _input,
+            _gameTime.GameHour, _weather, _mobManager.Mobs);
+        _music?.Update(dt);
     }
 
     protected override void OnRenderFrame(FrameEventArgs args)
@@ -229,7 +260,7 @@ public class WebcraftGame : GameWindow
 
         if (_wireframe)
             GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Line);
-        _renderer.Render(_camera, _world, _gameTime, _weather, _lightingEngine.SkyMultiplier, _player.Physics.IsUnderwater, _mobManager);
+        _renderer.Render(_camera, _world, _gameTime, _weather, _lightingEngine.SkyMultiplier, _player.Physics.IsUnderwater, _mobManager, _critterManager);
 
         float mouseX = _hud.IsInventoryOpen ? MouseState.X : 0;
         float mouseY = _hud.IsInventoryOpen ? MouseState.Y : 0;
@@ -261,6 +292,9 @@ public class WebcraftGame : GameWindow
 
     protected override void OnUnload()
     {
+        _music?.Dispose();
+        _sfx?.Dispose();
+        _audioManager?.Dispose();
         _hud?.Dispose();
         _renderer?.Dispose();
         foreach (var chunk in _world.GetAllChunks())

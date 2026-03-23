@@ -41,6 +41,10 @@ public abstract class MobBase
     public bool IsAlive => Health > 0;
     public bool MarkedForRemoval;
 
+    // Audio
+    public float IdleSoundTimer;
+    public string? IdleSoundName;
+
     // Hurt flash
     public float HurtTimer;
     private const float HurtDuration = 0.3f;
@@ -243,14 +247,14 @@ public abstract class MobBase
             TransitionTo(MobState.Chase);
     }
 
-    private void ApplyGravity(float dt)
+    protected virtual void ApplyGravity(float dt)
     {
         if (!IsOnGround)
             Velocity.Y -= GameConfig.GRAVITY;
         Velocity.Y = MathF.Max(Velocity.Y, -GameConfig.GRAVITY * 20);
     }
 
-    private void ApplyMovement(float dt, WorldManager world)
+    protected virtual void ApplyMovement(float dt, WorldManager world)
     {
         // Horizontal movement with collision
         float newX = Position.X + Velocity.X;
@@ -292,7 +296,7 @@ public abstract class MobBase
         Position.Y = MathF.Max(Position.Y, BodyHeight * 0.5f + 1f);
     }
 
-    private bool CheckMobCollision(WorldManager world, float x, float y, float z)
+    protected bool CheckMobCollision(WorldManager world, float x, float y, float z)
     {
         float halfW = BodyWidth * 0.5f;
         float halfH = BodyHeight * 0.5f;

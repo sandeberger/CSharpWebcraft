@@ -18,6 +18,7 @@ public class PlayerController
     private readonly HudRenderer _hud;
 
     public PlayerPhysics Physics => _physics;
+    public BlockInteraction BlockInteraction => _blockInteraction;
 
     public PlayerController(Camera camera, InputManager input, WorldManager world,
         HudRenderer hud, WaterFlow? waterFlow = null, LavaFlow? lavaFlow = null)

@@ -25,6 +25,9 @@ public class WeatherSystem
     public WeatherType CurrentWeather => _current;
     public WeatherPhase Phase => _phase;
 
+    // Audio event: fires with thunder delay in seconds
+    public Action<float>? OnLightning;
+
     // State
     private WeatherType _current = WeatherType.Clear;
     private WeatherType _target = WeatherType.Clear;
@@ -106,6 +109,9 @@ public class WeatherSystem
             {
                 LightningStrength = 0.85f + (float)_random.NextDouble() * 0.15f;
                 _lightningCooldown = RandomRange(4f, 9f);
+
+                float thunderDelay = 0.3f + (float)_random.NextDouble() * 1.2f;
+                OnLightning?.Invoke(thunderDelay);
             }
         }
         LightningStrength = MathF.Max(0, LightningStrength - dt * 4f);

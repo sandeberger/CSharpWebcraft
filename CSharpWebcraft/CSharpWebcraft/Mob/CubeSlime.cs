@@ -28,6 +28,9 @@ public class CubeSlime : MobBase
         AttackRange = 1.5f * size;
         DetectRange = 12f;
 
+        IdleSoundName = "slime_idle";
+        IdleSoundTimer = 5f + Random.Shared.NextSingle() * 10f;
+
         // Random green shade
         float g = 0.5f + Random.Shared.NextSingle() * 0.3f;
         _color = new Vector3(0.2f, g, 0.15f);
@@ -56,8 +59,8 @@ public class CubeSlime : MobBase
         {
             Yaw = LerpAngle(Yaw, WanderAngle, 0.3f);
             Velocity.Y = 0.2f + Random.Shared.NextSingle() * 0.1f;
-            Velocity.X = MathF.Cos(Yaw) * Speed * 3f;
-            Velocity.Z = MathF.Sin(Yaw) * Speed * 3f;
+            Velocity.X = MathF.Cos(Yaw) * Speed * 1f;
+            Velocity.Z = MathF.Sin(Yaw) * Speed * 1f;
             _jumpCooldown = 0.8f + Random.Shared.NextSingle() * 0.5f;
             _squishFactor = 1f;
         }
@@ -93,8 +96,8 @@ public class CubeSlime : MobBase
         if (IsOnGround && _jumpCooldown <= 0)
         {
             Velocity.Y = 0.25f;
-            Velocity.X = MathF.Cos(Yaw) * Speed * 4f;
-            Velocity.Z = MathF.Sin(Yaw) * Speed * 4f;
+            Velocity.X = MathF.Cos(Yaw) * Speed * 1.33f;
+            Velocity.Z = MathF.Sin(Yaw) * Speed * 1.33f;
             _jumpCooldown = 0.6f;
             _squishFactor = 1f;
         }

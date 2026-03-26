@@ -26,9 +26,9 @@ public static class ChunkMeshBuilder
     // Quad indices for 2 triangles from 4 vertices
     private static readonly int[] QuadIndices = [0, 1, 2, 0, 2, 3];
 
-    // Pre-calculated billboard normals (normalized)
-    private static readonly float BN1X = -0.7071068f, BN1Y = 0, BN1Z = 0.7071068f;
-    private static readonly float BN2X = 0.7071068f, BN2Y = 0, BN2Z = 0.7071068f;
+    // Pre-calculated billboard normals (normalized) — Y is set per-vertex for wind sway weight
+    private static readonly float BN1X = -0.7071068f, BN1Z = 0.7071068f;
+    private static readonly float BN2X = 0.7071068f, BN2Z = 0.7071068f;
 
     // Thread-local geometry buffers to reduce GC
     [ThreadStatic] private static float[]? _opaqueBuffer;
@@ -312,23 +312,29 @@ public static class ChunkMeshBuilder
         float g = ((bCol >> 8) & 0xFF) / 255f;
         float b = (bCol & 0xFF) / 255f;
 
+        // Sway weight encoded in normal.y: 0=anchored, 1=sways
+        // Hanging blocks (vines, hanging moss) are inverted: top anchored, bottom sways
+        bool isHanging = blkData.Id == 47 || blkData.Id == 49;
+        float bottomNy = isHanging ? 1.0f : 0.0f;
+        float topNy = isHanging ? 0.0f : 1.0f;
+
         var buf = _billboardBuffer!;
 
         // Quad 1: diagonal (0,0,0)-(1,0,1)-(1,1,1)-(0,1,0)
-        EmitVertex(buf, ref _billboardCount, bx, by, bz, BN1X, BN1Y, BN1Z, r, g, b, u0, v0, skyBri, blockBri);
-        EmitVertex(buf, ref _billboardCount, bx+1, by, bz+1, BN1X, BN1Y, BN1Z, r, g, b, u1, v0, skyBri, blockBri);
-        EmitVertex(buf, ref _billboardCount, bx+1, by+1, bz+1, BN1X, BN1Y, BN1Z, r, g, b, u1, v1, skyBri, blockBri);
-        EmitVertex(buf, ref _billboardCount, bx, by, bz, BN1X, BN1Y, BN1Z, r, g, b, u0, v0, skyBri, blockBri);
-        EmitVertex(buf, ref _billboardCount, bx+1, by+1, bz+1, BN1X, BN1Y, BN1Z, r, g, b, u1, v1, skyBri, blockBri);
-        EmitVertex(buf, ref _billboardCount, bx, by+1, bz, BN1X, BN1Y, BN1Z, r, g, b, u0, v1, skyBri, blockBri);
+        EmitVertex(buf, ref _billboardCount, bx, by, bz, BN1X, bottomNy, BN1Z, r, g, b, u0, v0, skyBri, blockBri);
+        EmitVertex(buf, ref _billboardCount, bx+1, by, bz+1, BN1X, bottomNy, BN1Z, r, g, b, u1, v0, skyBri, blockBri);
+        EmitVertex(buf, ref _billboardCount, bx+1, by+1, bz+1, BN1X, topNy, BN1Z, r, g, b, u1, v1, skyBri, blockBri);
+        EmitVertex(buf, ref _billboardCount, bx, by, bz, BN1X, bottomNy, BN1Z, r, g, b, u0, v0, skyBri, blockBri);
+        EmitVertex(buf, ref _billboardCount, bx+1, by+1, bz+1, BN1X, topNy, BN1Z, r, g, b, u1, v1, skyBri, blockBri);
+        EmitVertex(buf, ref _billboardCount, bx, by+1, bz, BN1X, topNy, BN1Z, r, g, b, u0, v1, skyBri, blockBri);
 
         // Quad 2: perpendicular diagonal
-        EmitVertex(buf, ref _billboardCount, bx+1, by, bz, BN2X, BN2Y, BN2Z, r, g, b, u0, v0, skyBri, blockBri);
-        EmitVertex(buf, ref _billboardCount, bx, by, bz+1, BN2X, BN2Y, BN2Z, r, g, b, u1, v0, skyBri, blockBri);
-        EmitVertex(buf, ref _billboardCount, bx, by+1, bz+1, BN2X, BN2Y, BN2Z, r, g, b, u1, v1, skyBri, blockBri);
-        EmitVertex(buf, ref _billboardCount, bx+1, by, bz, BN2X, BN2Y, BN2Z, r, g, b, u0, v0, skyBri, blockBri);
-        EmitVertex(buf, ref _billboardCount, bx, by+1, bz+1, BN2X, BN2Y, BN2Z, r, g, b, u1, v1, skyBri, blockBri);
-        EmitVertex(buf, ref _billboardCount, bx+1, by+1, bz, BN2X, BN2Y, BN2Z, r, g, b, u0, v1, skyBri, blockBri);
+        EmitVertex(buf, ref _billboardCount, bx+1, by, bz, BN2X, bottomNy, BN2Z, r, g, b, u0, v0, skyBri, blockBri);
+        EmitVertex(buf, ref _billboardCount, bx, by, bz+1, BN2X, bottomNy, BN2Z, r, g, b, u1, v0, skyBri, blockBri);
+        EmitVertex(buf, ref _billboardCount, bx, by+1, bz+1, BN2X, topNy, BN2Z, r, g, b, u1, v1, skyBri, blockBri);
+        EmitVertex(buf, ref _billboardCount, bx+1, by, bz, BN2X, bottomNy, BN2Z, r, g, b, u0, v0, skyBri, blockBri);
+        EmitVertex(buf, ref _billboardCount, bx, by+1, bz+1, BN2X, topNy, BN2Z, r, g, b, u1, v1, skyBri, blockBri);
+        EmitVertex(buf, ref _billboardCount, bx+1, by+1, bz, BN2X, topNy, BN2Z, r, g, b, u0, v1, skyBri, blockBri);
     }
 
     private static void EmitFlatBillboard(Chunk chunk, int bx, int by, int bz, ref BlockType blkData)

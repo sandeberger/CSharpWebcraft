@@ -17,6 +17,7 @@ public class Renderer
     private MobRenderer _mobRenderer = null!;
     private CritterRenderer _critterRenderer = null!;
     private StarRenderer _starRenderer = null!;
+    private AuroraRenderer _auroraRenderer = null!;
     private PostProcessing _postProcessing = null!;
     private readonly System.Diagnostics.Stopwatch _timer = System.Diagnostics.Stopwatch.StartNew();
 
@@ -29,6 +30,7 @@ public class Renderer
     // Weather rendering
     private CloudRenderer _cloudRenderer = null!;
     private RainRenderer _rainRenderer = null!;
+    private LeafParticleRenderer _leafRenderer = null!;
 
     public void Init(int screenWidth, int screenHeight)
     {
@@ -45,12 +47,16 @@ public class Renderer
         _cloudRenderer.Init();
         _rainRenderer = new RainRenderer();
         _rainRenderer.Init();
+        _leafRenderer = new LeafParticleRenderer();
+        _leafRenderer.Init();
         _mobRenderer = new MobRenderer();
         _mobRenderer.Init();
         _critterRenderer = new CritterRenderer();
         _critterRenderer.Init();
         _starRenderer = new StarRenderer();
         _starRenderer.Init();
+        _auroraRenderer = new AuroraRenderer();
+        _auroraRenderer.Init();
         _postProcessing = new PostProcessing();
         _postProcessing.Init(screenWidth, screenHeight, assetsPath);
 
@@ -62,8 +68,9 @@ public class Renderer
     }
 
     public RainRenderer Rain => _rainRenderer;
+    public LeafParticleRenderer Leaves => _leafRenderer;
 
-    public void Render(Camera camera, WorldManager world, GameTime gameTime, WeatherSystem? weather = null, float skyMultiplier = 1f, bool isUnderwater = false, MobManager? mobManager = null, CritterManager? critterManager = null)
+    public void Render(Camera camera, WorldManager world, GameTime gameTime, WeatherSystem? weather = null, float skyMultiplier = 1f, bool isUnderwater = false, MobManager? mobManager = null, CritterManager? critterManager = null, WindSystem? wind = null, float auroraStrength = 0f)
     {
         // Render scene to HDR FBO for post-processing
         _postProcessing.BeginScenePass();
@@ -107,6 +114,7 @@ public class Renderer
         {
             RenderSky(camera, gameTime, weather, fogColor, sunDir, moonDir);
             _starRenderer.Render(camera, gameTime.GameHour, weather?.Gloom ?? 0f);
+            _auroraRenderer.Render(camera, gameTime.GameHour, weather?.Gloom ?? 0f, auroraStrength, (float)_timer.Elapsed.TotalSeconds);
         }
 
         // Clouds (after sky, before terrain)
@@ -148,8 +156,16 @@ public class Renderer
             }
         }
 
-        // Billboard pass (alpha test)
+        // Billboard pass (alpha test + wind sway)
         _blockShader.SetFloat("uAlphaTest", 0.5f);
+        _blockShader.SetInt("uBillboardPass", 1);
+        _blockShader.SetFloat("uTime", (float)_timer.Elapsed.TotalSeconds);
+        if (wind != null)
+        {
+            _blockShader.SetVector2("uWindDirection", wind.WindDirection);
+            _blockShader.SetFloat("uWindStrength", wind.WindStrength);
+            _blockShader.SetFloat("uGustFactor", wind.GustFactor);
+        }
         GL.Disable(EnableCap.CullFace);
         foreach (var chunk in world.GetAllChunks())
         {
@@ -163,6 +179,7 @@ public class Renderer
             }
         }
         GL.Enable(EnableCap.CullFace);
+        _blockShader.SetInt("uBillboardPass", 0);
 
         // Mob pass (opaque, between billboards and transparent)
         if (mobManager != null)
@@ -207,6 +224,9 @@ public class Renderer
         // Rain (after all world geometry)
         if (weather != null)
             _rainRenderer.Render(camera, weather.Precipitation, camera.Position, world);
+
+        // Falling leaves
+        _leafRenderer.Render(camera);
 
         // Apply SSAO + Bloom post-processing → output to screen
         _postProcessing.Apply(camera);
@@ -432,9 +452,11 @@ public class Renderer
         _atlas?.Dispose();
         _cloudRenderer?.Dispose();
         _rainRenderer?.Dispose();
+        _leafRenderer?.Dispose();
         _mobRenderer?.Dispose();
         _critterRenderer?.Dispose();
         _starRenderer?.Dispose();
+        _auroraRenderer?.Dispose();
         _postProcessing?.Dispose();
         GL.DeleteBuffer(_skyVbo);
         GL.DeleteVertexArray(_skyVao);

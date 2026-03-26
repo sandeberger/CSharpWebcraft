@@ -7,6 +7,7 @@ using CSharpWebcraft.Audio;
 using CSharpWebcraft.Input;
 using CSharpWebcraft.Mob;
 using CSharpWebcraft.Mob.Critter;
+using CSharpWebcraft.Noise;
 using CSharpWebcraft.Player;
 using CSharpWebcraft.Rendering;
 using CSharpWebcraft.UI;
@@ -35,6 +36,9 @@ public class WebcraftGame : GameWindow
     private MusicPlayer _music = null!;
 
     private GameConsole _console = null!;
+    private WindSystem _wind = null!;
+    private float _auroraStrength;
+    private float _auroraStrengthSmoothed;
 
     private bool _wireframe;
     private float _lightUpdateTimer;
@@ -66,6 +70,7 @@ public class WebcraftGame : GameWindow
         _gameTime = new GameTime();
         _input = new InputManager();
         _weather = new WeatherSystem();
+        // WindSystem initialized after _world (needs noise), see below
 
         _camera = new Camera(
             new Vector3(GameConfig.CHUNK_SIZE / 2f, GameConfig.WATER_LEVEL + 20, GameConfig.CHUNK_SIZE / 2f),
@@ -93,6 +98,7 @@ public class WebcraftGame : GameWindow
         _camera.Position = spawnPos;
         Console.WriteLine($"Spawned at {spawnPos.X:F1}, {spawnPos.Y:F1}, {spawnPos.Z:F1}");
 
+        _wind = new WindSystem(_world.Noise);
         _mobManager = new MobManager(_world);
         _critterManager = new CritterManager(_world);
         _player = new PlayerController(_camera, _input, _world, _hud, _waterFlow, _lavaFlow);
@@ -181,7 +187,9 @@ public class WebcraftGame : GameWindow
 
             // Still update world while console is open
             _weather.Update(dt);
+            _wind.Update(dt, _weather);
             _renderer.Rain.Update(dt, _camera.Position, _world, _weather.Precipitation);
+            _renderer.Leaves.Update(dt, _camera.Position, _world, _wind);
             _lightUpdateTimer += dt;
             if (_lightUpdateTimer > 1f)
             {
@@ -248,9 +256,11 @@ public class WebcraftGame : GameWindow
                 }
             }
 
-            // Update weather and world but skip player controls
+            // Update weather/wind and world but skip player controls
             _weather.Update(dt);
+            _wind.Update(dt, _weather);
             _renderer.Rain.Update(dt, _camera.Position, _world, _weather.Precipitation);
+            _renderer.Leaves.Update(dt, _camera.Position, _world, _wind);
             _lightUpdateTimer += dt;
             if (_lightUpdateTimer > 1f)
             {
@@ -274,11 +284,13 @@ public class WebcraftGame : GameWindow
         if (_input.ScrollDelta > 0.5f) _hud.CycleSlot(-1);
         else if (_input.ScrollDelta < -0.5f) _hud.CycleSlot(1);
 
-        // Update weather
+        // Update weather & wind
         _weather.Update(dt);
+        _wind.Update(dt, _weather);
 
-        // Update rain particles
+        // Update rain & leaf particles
         _renderer.Rain.Update(dt, _camera.Position, _world, _weather.Precipitation);
+        _renderer.Leaves.Update(dt, _camera.Position, _world, _wind);
 
         // Update lighting periodically (with weather dimming)
         _lightUpdateTimer += dt;
@@ -297,6 +309,17 @@ public class WebcraftGame : GameWindow
         _waterFlow.Update(dt);
         _lavaFlow.Update(dt);
 
+        // Aurora biome strength (only cold biomes)
+        string biome = BiomeHelper.GetBiomeAt(_world.Noise,
+            (int)_camera.Position.X, (int)_camera.Position.Z);
+        _auroraStrength = biome switch
+        {
+            "tundra" => 1.0f,
+            "mountains" => 0.85f,
+            _ => 0.0f
+        };
+        _auroraStrengthSmoothed += (_auroraStrength - _auroraStrengthSmoothed) * MathF.Min(dt * 0.5f, 1f);
+
         // Audio
         _sfx?.Update(dt, _camera.Position, _player.Physics, _input,
             _gameTime.GameHour, _weather, _mobManager.Mobs);
@@ -309,7 +332,7 @@ public class WebcraftGame : GameWindow
 
         if (_wireframe)
             GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Line);
-        _renderer.Render(_camera, _world, _gameTime, _weather, _lightingEngine.SkyMultiplier, _player.Physics.IsUnderwater, _mobManager, _critterManager);
+        _renderer.Render(_camera, _world, _gameTime, _weather, _lightingEngine.SkyMultiplier, _player.Physics.IsUnderwater, _mobManager, _critterManager, _wind, _auroraStrengthSmoothed);
 
         float mouseX = _hud.IsInventoryOpen ? MouseState.X : 0;
         float mouseY = _hud.IsInventoryOpen ? MouseState.Y : 0;

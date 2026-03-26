@@ -150,4 +150,32 @@ public static class GameConfig
     public const float BLOOM_THRESHOLD = 0.8f;
     public const float BLOOM_INTENSITY = 0.5f;
     public const int BLOOM_BLUR_PASSES = 4;
+
+    // Wind System
+    public const float WIND_BASE_STRENGTH = 0.15f;
+    public const float WIND_STORM_BOOST = 0.6f;
+    public const float WIND_GUST_FREQUENCY = 0.5f;
+    public const float WIND_DIRECTION_CHANGE_SPEED = 0.02f;
+
+    // Falling Leaves
+    public const int LEAF_PARTICLE_MAX = 400;
+    public const float LEAF_SPAWN_RATE_BASE = 2f;
+    public const float LEAF_SPAWN_RATE_STORM = 30f;
+    public const float LEAF_FALL_SPEED = 1.2f;
+    public const float LEAF_FLUTTER_AMPLITUDE = 0.8f;
+    public const float LEAF_LIFETIME_BASE = 8f;
+    public const float LEAF_SPAWN_RADIUS = 48f;
+    public const float LEAF_POINT_SIZE = 4f;
+
+    // Aurora Borealis
+    public const int AURORA_BAND_COUNT = 3;
+    public const int AURORA_BAND_SEGMENTS = 64;
+    public const float AURORA_BAND_ARC_WIDTH = 2.8f;
+    public const float AURORA_CURTAIN_HEIGHT = 0.45f;
+    public const float AURORA_BASE_ELEVATION = 0.5f;
+    public const float AURORA_ELEVATION_WOBBLE = 0.12f;
+    public const int AURORA_VERTICAL_SUBDIVISIONS = 4;
+    public const float AURORA_ANIMATION_SPEED = 1.0f;
+    public const float AURORA_EMISSION_BASE = 1.2f;
+    public const float AURORA_EMISSION_RANGE = 0.3f;
 }

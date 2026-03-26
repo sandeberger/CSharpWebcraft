@@ -34,6 +34,8 @@ public class WebcraftGame : GameWindow
     private SfxSystem _sfx = null!;
     private MusicPlayer _music = null!;
 
+    private GameConsole _console = null!;
+
     private bool _wireframe;
     private float _lightUpdateTimer;
     private int _fps;
@@ -95,6 +97,21 @@ public class WebcraftGame : GameWindow
         _critterManager = new CritterManager(_world);
         _player = new PlayerController(_camera, _input, _world, _hud, _waterFlow, _lavaFlow);
 
+        // Console
+        _console = new GameConsole();
+        _console.Init(_gameTime, _weather, _camera, _player.Physics,
+            _critterManager, _mobManager, _world, _hud);
+        _hud.Console = _console;
+
+        TextInput += e =>
+        {
+            if (_console.IsOpen)
+            {
+                foreach (char c in e.AsString)
+                    _console.HandleChar(c);
+            }
+        };
+
         // Audio
         _audioManager = new AudioManager();
         _audioManager.Init();
@@ -135,7 +152,7 @@ public class WebcraftGame : GameWindow
             _fpsTimer = 0;
         }
 
-        // ESC: close inventory or quit
+        // ESC: toggle console, close inventory
         if (_input.IsKeyPressed(Keys.Escape))
         {
             if (_hud.IsInventoryOpen)
@@ -145,9 +162,39 @@ public class WebcraftGame : GameWindow
             }
             else
             {
-                Close();
-                return;
+                _console.Toggle();
+                CursorState = _console.IsOpen ? CursorState.Normal : CursorState.Grabbed;
             }
+        }
+
+        // Console input handling
+        if (_console.IsOpen)
+        {
+            if (_input.IsKeyPressed(Keys.Enter))
+                _console.HandleEnter();
+            if (_input.IsKeyPressed(Keys.Backspace))
+                _console.HandleBackspace();
+            if (_input.IsKeyPressed(Keys.Up))
+                _console.HandleHistoryUp();
+            if (_input.IsKeyPressed(Keys.Down))
+                _console.HandleHistoryDown();
+
+            // Still update world while console is open
+            _weather.Update(dt);
+            _renderer.Rain.Update(dt, _camera.Position, _world, _weather.Precipitation);
+            _lightUpdateTimer += dt;
+            if (_lightUpdateTimer > 1f)
+            {
+                _lightingEngine.UpdateGlobalSkyLight(_gameTime.GameHour, _weather.Gloom * 0.4f);
+                _lightUpdateTimer = 0;
+            }
+            _world.Update(_camera.Position);
+            _waterFlow.Update(dt);
+            _lavaFlow.Update(dt);
+            _mobManager.Update(dt, _camera.Position);
+            _critterManager.Update(dt, _camera.Position, _gameTime.GameHour, _weather.Precipitation);
+            _music?.Update(dt);
+            return;
         }
 
         // E: toggle inventory
@@ -179,7 +226,7 @@ public class WebcraftGame : GameWindow
                 _ => WeatherType.Clear
             };
             _weather.RequestWeather(next);
-            Console.WriteLine($"Weather: {next}");
+            System.Console.WriteLine($"Weather: {next}");
         }
 
         // Time advance
@@ -241,6 +288,8 @@ public class WebcraftGame : GameWindow
             _lightUpdateTimer = 0;
         }
 
+        _player.SpeedMultiplier = _console.SpeedMultiplier;
+        _player.FlyMode = _console.FlyMode;
         _player.Update(dt);
         _mobManager.Update(dt, _camera.Position);
         _critterManager.Update(dt, _camera.Position, _gameTime.GameHour, _weather.Precipitation);

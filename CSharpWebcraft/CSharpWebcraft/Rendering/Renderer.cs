@@ -100,11 +100,12 @@ public class Renderer
         float hour = gameTime.GameHour;
         float sunAngle = (hour / 24f) * MathF.PI * 2f - MathF.PI / 2f;
         Vector3 sunDir = Vector3.Normalize(new Vector3(MathF.Cos(sunAngle), MathF.Sin(sunAngle), 0.3f));
+        Vector3 moonDir = Vector3.Normalize(new Vector3(-MathF.Cos(sunAngle), -MathF.Sin(sunAngle), 0.3f));
 
         // Sky (render first, at max depth)
         if (!isUnderwater)
         {
-            RenderSky(camera, gameTime, weather, fogColor, sunDir);
+            RenderSky(camera, gameTime, weather, fogColor, sunDir, moonDir);
             _starRenderer.Render(camera, gameTime.GameHour, weather?.Gloom ?? 0f);
         }
 
@@ -246,7 +247,7 @@ public class Renderer
         else chunk.BillboardMesh = null;
     }
 
-    private void RenderSky(Camera camera, GameTime gameTime, WeatherSystem? weather, Vector3 fogColor, Vector3 sunDir)
+    private void RenderSky(Camera camera, GameTime gameTime, WeatherSystem? weather, Vector3 fogColor, Vector3 sunDir, Vector3 moonDir)
     {
         GL.DepthFunc(DepthFunction.Lequal);
         GL.DepthMask(false);
@@ -289,6 +290,20 @@ public class Renderer
         float sunGlow = hour >= 5 && hour < 19 ? 1f : 0f;
         if (weather != null) sunGlow *= weather.DirectionalScale;
         _skyShader.SetFloat("uSunGlow", sunGlow);
+
+        // Moon glow: smooth fade matching star timing
+        float moonGlow;
+        if (hour >= 20 || hour < 4)
+            moonGlow = 1f;
+        else if (hour >= 19 && hour < 20)
+            moonGlow = hour - 19f;
+        else if (hour >= 4 && hour < 5)
+            moonGlow = 5f - hour;
+        else
+            moonGlow = 0f;
+        if (weather != null) moonGlow *= weather.DirectionalScale;
+        _skyShader.SetFloat("uMoonGlow", moonGlow);
+        _skyShader.SetVector3("uMoonDirection", moonDir);
 
         GL.BindVertexArray(_skyVao);
         GL.DrawArrays(PrimitiveType.Triangles, 0, _skyVertexCount);

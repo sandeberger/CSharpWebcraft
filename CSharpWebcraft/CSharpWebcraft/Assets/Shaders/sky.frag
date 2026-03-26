@@ -8,6 +8,8 @@ uniform vec3 uTopColor;
 uniform vec3 uBottomColor;
 uniform vec3 uSunDirection;
 uniform float uSunGlow;
+uniform vec3 uMoonDirection;
+uniform float uMoonGlow;
 
 void main()
 {
@@ -30,6 +32,13 @@ void main()
     float sunHalo = pow(sunDot, 8.0) * uSunGlow * 0.15;
     skyColor += vec3(1.0, 0.9, 0.7) * sunGlow;
     skyColor += vec3(1.0, 0.85, 0.6) * sunHalo;
+
+    // Moon glow
+    float moonDot = max(dot(dir, uMoonDirection), 0.0);
+    float moonCore = pow(moonDot, 48.0) * uMoonGlow;
+    float moonHalo = pow(moonDot, 10.0) * uMoonGlow * 0.10;
+    skyColor += vec3(0.8, 0.85, 1.0) * moonCore;
+    skyColor += vec3(0.7, 0.8, 1.0) * moonHalo;
 
     FragColor = vec4(skyColor, 1.0);
 }

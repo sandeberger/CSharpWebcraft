@@ -34,7 +34,7 @@ public class HudRenderer : IDisposable
     private int _colorVertexEnd;
     private bool _disposed;
 
-    private const int MAX_VERTICES = 4096;
+    private const int MAX_VERTICES = 16384;
     private const int FLOATS_PER_VERTEX = 8; // x, y, u, v, r, g, b, a
 
     // Screen size
@@ -128,6 +128,9 @@ public class HudRenderer : IDisposable
             _hotbarSlots[slot] = blockType;
     }
 
+    // Console reference
+    public GameConsole? Console { get; set; }
+
     public void Render(TextureAtlas atlas, PlayerPhysics physics,
         Vector3 cameraPos = default, float mouseX = 0, float mouseY = 0,
         int fps = 0, int chunkCount = 0)
@@ -137,7 +140,8 @@ public class HudRenderer : IDisposable
         // ===== Phase 1: Colored geometry (no texture) =====
         if (physics.IsUnderwater)
             BuildUnderwaterOverlay();
-        BuildCrosshair();
+        if (Console is not { IsOpen: true })
+            BuildCrosshair();
         BuildHotbarBackground();
         BuildSelectionHighlight();
         BuildHealthBar(physics.Health, physics.MaxHealth);
@@ -147,6 +151,8 @@ public class HudRenderer : IDisposable
             BuildInventoryBackground(mouseX, mouseY);
         if (ShowDebugOverlay)
             BuildDebugBackground(cameraPos, fps, chunkCount);
+        if (Console is { IsOpen: true })
+            BuildConsoleBackground();
 
         _colorVertexEnd = _vertexCount;
 
@@ -160,6 +166,8 @@ public class HudRenderer : IDisposable
             BuildInventoryTitle();
         if (ShowDebugOverlay)
             BuildDebugText(cameraPos, fps, chunkCount);
+        if (Console is { IsOpen: true })
+            BuildConsoleText();
 
         if (_vertexCount == 0) return;
 
@@ -474,6 +482,63 @@ public class HudRenderer : IDisposable
 
         BuildText(line1, x, y, fontSize, 0.9f, 0.9f, 0.9f, 0.9f);
         BuildText(line2, x, y + fontSize + 4, fontSize, 0.7f, 0.9f, 0.7f, 0.9f);
+    }
+
+    // ======== Console rendering ========
+
+    private const float CONSOLE_HEIGHT_RATIO = 0.42f;
+    private const float CONSOLE_FONT = 14f;
+    private const float CONSOLE_PAD = 10f;
+    private const float CONSOLE_INPUT_H = 28f;
+
+    private void BuildConsoleBackground()
+    {
+        float h = _screenH * CONSOLE_HEIGHT_RATIO;
+
+        // Main background
+        AddColorQuad(0, 0, _screenW, h, 0.02f, 0.02f, 0.06f, 0.88f);
+
+        // Input line background
+        float inputY = h - CONSOLE_INPUT_H;
+        AddColorQuad(0, inputY, _screenW, CONSOLE_INPUT_H, 0.08f, 0.08f, 0.12f, 0.95f);
+
+        // Separator line
+        AddColorQuad(0, inputY, _screenW, 1, 0.3f, 0.4f, 0.6f, 0.6f);
+
+        // Bottom edge
+        AddColorQuad(0, h - 1, _screenW, 2, 0.3f, 0.4f, 0.6f, 0.4f);
+    }
+
+    private void BuildConsoleText()
+    {
+        if (Console == null) return;
+
+        float h = _screenH * CONSOLE_HEIGHT_RATIO;
+        float lineH = CONSOLE_FONT + 3f;
+
+        // Output lines (draw from bottom up)
+        var lines = Console.OutputLines;
+        int startIdx = Math.Max(0, lines.Count - GameConsole.VisibleLines);
+        float outputBottom = h - CONSOLE_INPUT_H - 4f;
+
+        int drawn = 0;
+        for (int i = lines.Count - 1; i >= startIdx && drawn < GameConsole.VisibleLines; i--, drawn++)
+        {
+            var line = lines[i];
+            float y = outputBottom - (drawn + 1) * lineH;
+            if (y < 2) break;
+            BuildText(line.Text, CONSOLE_PAD, y, CONSOLE_FONT, line.R, line.G, line.B, 0.95f);
+        }
+
+        // Input line
+        float inputY = h - CONSOLE_INPUT_H + 6f;
+        BuildText(">", CONSOLE_PAD, inputY, CONSOLE_FONT, 0.4f, 0.8f, 0.4f, 1f);
+
+        string inputText = Console.InputBuffer;
+        // Blinking cursor
+        bool showCursor = ((int)(DateTime.Now.Millisecond / 400)) % 2 == 0;
+        string display = inputText + (showCursor ? "_" : "");
+        BuildText(display, CONSOLE_PAD + CONSOLE_FONT * 0.8f, inputY, CONSOLE_FONT, 1f, 1f, 1f, 1f);
     }
 
     // ======== Text rendering ========

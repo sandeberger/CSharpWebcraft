@@ -11,9 +11,13 @@ public class WorldManager
     private readonly Dictionary<(int, int), Chunk> _loadedChunks = new();
     private readonly ConcurrentDictionary<(int, int), byte> _pendingChunks = new();
     private readonly ConcurrentQueue<Chunk> _completedChunks = new();
+    private readonly Queue<Chunk> _lightPendingChunks = new();
     private readonly SimplexNoise _noise;
     private readonly TerrainGenerator _terrainGen;
     private readonly LightingEngine _lightingEngine;
+
+    /// <summary>Max chunks to light-propagate per frame (spreads cost over multiple frames).</summary>
+    private const int LightBudgetPerFrame = 2;
 
     // Cached chunk lookup
     private Chunk? _cachedChunk;
@@ -95,7 +99,7 @@ public class WorldManager
         int playerChunkX = (int)MathF.Floor(playerPos.X / GameConfig.CHUNK_SIZE);
         int playerChunkZ = (int)MathF.Floor(playerPos.Z / GameConfig.CHUNK_SIZE);
 
-        // Process ALL completed async chunks (mesh upload happens on GL thread)
+        // Phase 1: Register all completed chunks into the world (fast – no propagation yet)
         while (_completedChunks.TryDequeue(out var chunk))
         {
             var key = (chunk.X, chunk.Z);
@@ -115,8 +119,17 @@ public class WorldManager
             }
 
             _loadedChunks[key] = chunk;
+            _lightPendingChunks.Enqueue(chunk);
+        }
 
-            // Propagate block light and surface light now that chunk is in the world
+        // Phase 2: Propagate light for a limited number of chunks per frame
+        for (int i = 0; i < LightBudgetPerFrame && _lightPendingChunks.Count > 0; i++)
+        {
+            var chunk = _lightPendingChunks.Dequeue();
+
+            // Skip if chunk was unloaded while waiting in queue
+            if (!_loadedChunks.ContainsKey((chunk.X, chunk.Z))) continue;
+
             _lightingEngine.PropagateBlockLight(chunk, this);
             if (GameConfig.SURFACE_LIGHT_ENABLED)
                 _lightingEngine.PropagateSurfaceLight(chunk, this);

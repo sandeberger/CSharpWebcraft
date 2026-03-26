@@ -19,6 +19,8 @@ public class PlayerController
 
     public PlayerPhysics Physics => _physics;
     public BlockInteraction BlockInteraction => _blockInteraction;
+    public float SpeedMultiplier { get; set; } = 1f;
+    public bool FlyMode { get; set; }
 
     public PlayerController(Camera camera, InputManager input, WorldManager world,
         HudRenderer hud, WaterFlow? waterFlow = null, LavaFlow? lavaFlow = null)
@@ -60,12 +62,29 @@ public class PlayerController
         if (_input.IsKeyDown(Keys.A)) moveDir -= right;
         if (_input.IsKeyDown(Keys.D)) moveDir += right;
 
+        bool isUnderwater = _physics.IsUnderwater;
+
+        if (FlyMode)
+        {
+            // Fly mode: move in camera direction, space=up, shift=down
+            if (moveDir.LengthSquared > 0.001f)
+                moveDir = Vector3.Normalize(moveDir);
+            if (_input.IsKeyDown(Keys.Space)) moveDir.Y += 1f;
+            if (_input.IsKeyDown(Keys.LeftShift)) moveDir.Y -= 1f;
+            if (moveDir.LengthSquared > 0.001f)
+                moveDir = Vector3.Normalize(moveDir);
+            moveDir *= GameConfig.MOVEMENT_SPEED * SpeedMultiplier * 2f;
+            _camera.Position += moveDir;
+            _physics.VelocityY = 0;
+            return;
+        }
+
         moveDir.Y = 0;
         if (moveDir.LengthSquared > 0.001f)
             moveDir = Vector3.Normalize(moveDir);
 
-        bool isUnderwater = _physics.IsUnderwater;
         float speed = isUnderwater ? GameConfig.WATER_MOVEMENT_SPEED : GameConfig.MOVEMENT_SPEED * (_physics.IsOnGround ? 1f : 0.8f);
+        speed *= SpeedMultiplier;
         moveDir *= speed;
 
         // Step-based movement with collision

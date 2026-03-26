@@ -8,6 +8,7 @@ public class CritterManager
 {
     private readonly List<CritterBase> _critters = new();
     private readonly List<FishCritter> _fish = new();
+    private readonly List<TropicalFishCritter> _tropicalFish = new();
     private readonly List<DolphinCritter> _dolphins = new();
     private readonly WorldManager _world;
 
@@ -38,10 +39,12 @@ public class CritterManager
         if (_spawnTimer <= 0 && _critters.Count < MaxCritters)
         {
             TrySpawnCritters(playerPos, gameHour, precipitation);
+            TrySpawnAquaticCritters(playerPos);
             _spawnTimer = SpawnInterval;
         }
 
         FishFlocking.Update(_fish);
+        TropicalFishFlocking.Update(_tropicalFish);
         DolphinFlocking.Update(_dolphins);
 
         // Handle butterfly flower-hopping
@@ -55,6 +58,8 @@ public class CritterManager
             {
                 if (_critters[i] is FishCritter fish)
                     _fish.Remove(fish);
+                else if (_critters[i] is TropicalFishCritter tropicalFish)
+                    _tropicalFish.Remove(tropicalFish);
                 else if (_critters[i] is DolphinCritter dolphin)
                     _dolphins.Remove(dolphin);
                 _critters.RemoveAt(i);
@@ -124,16 +129,27 @@ public class CritterManager
         // Aquatic critters in water
         if (waterDepth > 1)
         {
-            if (waterDepth > 6 && IsOceanBiome(biome) && roll < 0.15f)
+            if (waterDepth > 6 && IsOceanBiome(biome) && roll < 0.25f)
             {
                 SpawnShark(spawnX, iz, spawnZ, waterDepth);
                 return;
             }
 
-            if (waterDepth > 4 && IsOceanBiome(biome) && roll < 0.35f)
+            if (waterDepth > 4 && IsOceanBiome(biome) && roll < 0.50f)
             {
                 SpawnDolphin(spawnX, spawnZ);
                 return;
+            }
+
+            // Tropical fish near coral reefs (any time of day)
+            if (waterDepth > 2 && IsCoralBiome(biome))
+            {
+                var coralPos = FindNearestCoral(ix, iz, groundY);
+                if (coralPos.HasValue)
+                {
+                    SpawnTropicalFishSchool(coralPos.Value);
+                    return;
+                }
             }
 
             if (isDay)
@@ -141,6 +157,39 @@ public class CritterManager
                 SpawnFishSchool(spawnX, spawnZ, waterDepth);
                 return;
             }
+        }
+    }
+
+    private void TrySpawnAquaticCritters(Vector3 playerPos)
+    {
+        float angle = Random.Shared.NextSingle() * MathF.PI * 2f;
+        float dist = SpawnMinDist + Random.Shared.NextSingle() * (SpawnMaxDist - SpawnMinDist);
+
+        float spawnX = playerPos.X + MathF.Cos(angle) * dist;
+        float spawnZ = playerPos.Z + MathF.Sin(angle) * dist;
+
+        int ix = (int)MathF.Floor(spawnX);
+        int iz = (int)MathF.Floor(spawnZ);
+
+        int groundY = _world.GetColumnHeight(ix, iz);
+        int waterDepth = GameConfig.WATER_LEVEL - groundY;
+        if (waterDepth <= 1) return;
+
+        string biome = BiomeHelper.GetBiomeAt(_world.Noise, ix, iz);
+        bool isOcean = waterDepth > 10 || IsOceanBiome(biome);
+        if (!isOcean) return;
+
+        float roll = Random.Shared.NextSingle();
+
+        if (waterDepth > 6 && roll < 0.30f)
+        {
+            SpawnShark(spawnX, iz, spawnZ, waterDepth);
+            return;
+        }
+
+        if (waterDepth > 4 && roll < 0.50f)
+        {
+            SpawnDolphin(spawnX, spawnZ);
         }
     }
 
@@ -335,6 +384,107 @@ public class CritterManager
         _critters.Add(new SharkCritter(pos));
     }
 
+    private void SpawnTropicalFishSchool(Vector3 coralPos)
+    {
+        int count = 3 + Random.Shared.Next(5); // 3-7 fish per school
+        float swimY = coralPos.Y + 1f + Random.Shared.NextSingle() * 2f;
+        swimY = MathF.Min(swimY, GameConfig.WATER_LEVEL - 0.5f);
+
+        for (int i = 0; i < count && _critters.Count < MaxCritters; i++)
+        {
+            float ox = (Random.Shared.NextSingle() - 0.5f) * 3f;
+            float oz = (Random.Shared.NextSingle() - 0.5f) * 3f;
+            float oy = (Random.Shared.NextSingle() - 0.5f) * 1.5f;
+            var pos = new Vector3(coralPos.X + ox, swimY + oy, coralPos.Z + oz);
+
+            byte block = _world.GetBlockAt(
+                (int)MathF.Floor(pos.X), (int)MathF.Floor(pos.Y), (int)MathF.Floor(pos.Z));
+            if (block != 9) continue;
+
+            var fish = new TropicalFishCritter(pos, coralPos);
+            _critters.Add(fish);
+            _tropicalFish.Add(fish);
+        }
+    }
+
+    /// <summary>
+    /// Scan a small area around the spawn point for coral blocks (IDs 32-36).
+    /// Returns the position of the first coral found, or null.
+    /// </summary>
+    private Vector3? FindNearestCoral(int centerX, int centerZ, int groundY)
+    {
+        int searchRadius = 6;
+        int minY = Math.Max(1, groundY - 2);
+        int maxY = Math.Min(GameConfig.WATER_LEVEL - 1, groundY + 4);
+
+        for (int dx = -searchRadius; dx <= searchRadius; dx += 2)
+        for (int dz = -searchRadius; dz <= searchRadius; dz += 2)
+        for (int y = minY; y <= maxY; y++)
+        {
+            byte block = _world.GetBlockAt(centerX + dx, y, centerZ + dz);
+            if (block >= 32 && block <= 36) // coral block IDs
+                return new Vector3(centerX + dx + 0.5f, y + 0.5f, centerZ + dz + 0.5f);
+        }
+        return null;
+    }
+
+    /// <summary>Console command: spawn critters at a given position.</summary>
+    public int SpawnCommand(string type, float x, float z, int count)
+    {
+        int spawned = 0;
+        for (int i = 0; i < count && _critters.Count < MaxCritters; i++)
+        {
+            float ox = (Random.Shared.NextSingle() - 0.5f) * 4f;
+            float oz = (Random.Shared.NextSingle() - 0.5f) * 4f;
+
+            switch (type)
+            {
+                case "shark":
+                    var shark = new SharkCritter(new Vector3(x + ox, GameConfig.WATER_LEVEL - 3f, z + oz));
+                    _critters.Add(shark);
+                    spawned++;
+                    break;
+                case "dolphin":
+                    var dolphin = new DolphinCritter(new Vector3(x + ox, GameConfig.WATER_LEVEL - 1.2f, z + oz));
+                    _critters.Add(dolphin);
+                    _dolphins.Add(dolphin);
+                    spawned++;
+                    break;
+                case "fish":
+                    var fish = new FishCritter(new Vector3(x + ox, GameConfig.WATER_LEVEL - 1f, z + oz));
+                    _critters.Add(fish);
+                    _fish.Add(fish);
+                    spawned++;
+                    break;
+                case "firefly":
+                    int groundY = _world.GetColumnHeight((int)x, (int)z);
+                    var ff = new FireflyCritter(new Vector3(x + ox, groundY + 2f + Random.Shared.NextSingle() * 4f, z + oz));
+                    _critters.Add(ff);
+                    spawned++;
+                    break;
+                case "butterfly":
+                    int gy = _world.GetColumnHeight((int)x, (int)z);
+                    var homeFlower = new Vector3(x, gy + 1f, z);
+                    var bf = new ButterflySwarm(new Vector3(x + ox, gy + 2f, z + oz), homeFlower);
+                    _critters.Add(bf);
+                    spawned++;
+                    break;
+            }
+        }
+        return spawned;
+    }
+
+    /// <summary>Console command: remove all critters.</summary>
+    public int ClearAll()
+    {
+        int count = _critters.Count;
+        _critters.Clear();
+        _fish.Clear();
+        _tropicalFish.Clear();
+        _dolphins.Clear();
+        return count;
+    }
+
     private static bool IsFireflyBiome(string biome) =>
         biome is "forest" or "swamp" or "valleys" or "savanna" or "plains";
 
@@ -342,5 +492,8 @@ public class CritterManager
         biome is "forest" or "plains" or "savanna" or "hills";
 
     private static bool IsOceanBiome(string biome) =>
-        biome is "lakes" or "valleys";
+        biome is "lakes" or "valleys" or "swamp";
+
+    private static bool IsCoralBiome(string biome) =>
+        biome is "desert" or "savanna" or "lakes";
 }

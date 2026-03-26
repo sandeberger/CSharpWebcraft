@@ -16,7 +16,7 @@ public static class GameConfig
     public const int CHUNK_MASK = 0xF;
     public const int CHUNK_SIZE_SQ = 256;
     public const int CHUNK_VOLUME = 25600;
-    public const bool SHADOWS_ENABLED = false;
+    public const bool SHADOWS_ENABLED = true;
     public const int SHADOW_MAP_SIZE = 512;
     public const float MOVEMENT_SPEED = 0.1f;
     public const float MOUSE_SENSITIVITY = 0.002f;

@@ -51,6 +51,15 @@ public class MobManager
         }
     }
 
+    /// <summary>Console command: kill all mobs.</summary>
+    public int KillAll()
+    {
+        int count = _mobs.Count;
+        _mobs.Clear();
+        _slimes.Clear();
+        return count;
+    }
+
     private void TrySpawnMob(Vector3 playerPos)
     {
         // Pick random position around player

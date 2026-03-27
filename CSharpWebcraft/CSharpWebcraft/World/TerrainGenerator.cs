@@ -95,9 +95,21 @@ public class TerrainGenerator
             GenerateMountainLavaLakes(chunk, surfaceHeights);
         }
 
+        // Phase 3b: Crystal caves
+        if (GameConfig.CRYSTAL_CAVES_ENABLED)
+            GenerateCrystalCaves(chunk, surfaceHeights);
+
+        // Phase 3c: Underground fossils
+        if (GameConfig.FOSSILS_ENABLED)
+            GenerateFossils(chunk, surfaceHeights);
+
         // Phase 4: Trees
         if (GameConfig.TREE_ENABLED)
             GenerateTrees(chunk, surfaceHeights);
+
+        // Phase 4b: Ancient ruins
+        if (GameConfig.RUINS_ENABLED)
+            GenerateAncientRuins(chunk, surfaceHeights);
 
         // Phase 5: Fill water
         FillWater(chunk, surfaceHeights);
@@ -280,6 +292,84 @@ public class TerrainGenerator
                     int y = sy - dy;
                     if (y < GameConfig.LAVA_Y_MIN) break;
                     chunk.SetBlock(x, y, z, 15);
+                }
+            }
+        }
+    }
+
+    private void GenerateCrystalCaves(Chunk chunk, (int y, string biome)[,] surfaceHeights)
+    {
+        byte[] crystalBlocks = { 51, 52, 53, 54 };
+
+        for (int x = 1; x < GameConfig.CHUNK_SIZE - 1; x++)
+        for (int z = 1; z < GameConfig.CHUNK_SIZE - 1; z++)
+        {
+            string biome = surfaceHeights[x, z].biome;
+            double biomeBonus = biome switch
+            {
+                "mountains" => 0.06,
+                "hills" => 0.04,
+                "valleys" => 0.02,
+                "tundra" => 0.02,
+                _ => 0.0
+            };
+            if (biomeBonus <= 0) continue;
+
+            int wx = chunk.X * GameConfig.CHUNK_SIZE + x;
+            int wz = chunk.Z * GameConfig.CHUNK_SIZE + z;
+
+            // 2D zone noise determines crystal regions
+            double zoneNoise = (_noise.Noise2D(
+                wx / (double)GameConfig.CRYSTAL_CAVE_NOISE_SCALE + 5000,
+                wz / (double)GameConfig.CRYSTAL_CAVE_NOISE_SCALE + 5000) + 1) / 2;
+            if (zoneNoise < GameConfig.CRYSTAL_CAVE_THRESHOLD - biomeBonus)
+                continue;
+
+            // Color zone: large-scale noise picks dominant crystal type
+            double colorNoise = (_noise.Noise2D(wx / 200.0 + 7000, wz / 200.0 + 7000) + 1) / 2;
+            int crystalIndex = (int)(colorNoise * 4) % 4;
+            byte primaryCrystal = crystalBlocks[crystalIndex];
+            byte secondaryCrystal = crystalBlocks[(crystalIndex + 1) % 4];
+
+            for (int y = GameConfig.CRYSTAL_CAVE_Y_MIN; y <= GameConfig.CRYSTAL_CAVE_Y_MAX; y++)
+            {
+                byte block = chunk.GetBlock(x, y, z);
+
+                if (block == 0) // Air inside a cave
+                {
+                    // Count stone neighbors — crystals grow on cave surfaces
+                    int stoneNeighbors = 0;
+                    int[][] dirs = { new[]{1,0,0}, new[]{-1,0,0}, new[]{0,0,1}, new[]{0,0,-1}, new[]{0,1,0}, new[]{0,-1,0} };
+                    foreach (var d in dirs)
+                    {
+                        byte nb = chunk.GetBlock(x + d[0], y + d[1], z + d[2]);
+                        if (nb == 3 || nb == 55) stoneNeighbors++;
+                    }
+                    if (stoneNeighbors < 3) continue;
+
+                    // 3D cluster noise for organic formations
+                    double clusterNoise = _noise.Noise3D(wx / 8.0 + 9000, y / 8.0, wz / 8.0 + 9000);
+                    if ((clusterNoise + 1) / 2 > 0.55 && _random.NextDouble() < GameConfig.CRYSTAL_CLUSTER_CHANCE)
+                    {
+                        byte crystal = _random.NextDouble() < 0.8 ? primaryCrystal : secondaryCrystal;
+                        chunk.SetBlock(x, y, z, crystal);
+                    }
+                }
+                else if (block == 3) // Stone — potential geode shell
+                {
+                    bool adjacentToAir = false;
+                    int[][] dirs = { new[]{1,0,0}, new[]{-1,0,0}, new[]{0,0,1}, new[]{0,0,-1}, new[]{0,1,0}, new[]{0,-1,0} };
+                    foreach (var d in dirs)
+                    {
+                        if (chunk.GetBlock(x + d[0], y + d[1], z + d[2]) == 0)
+                        { adjacentToAir = true; break; }
+                    }
+                    if (adjacentToAir && _random.NextDouble() < GameConfig.CRYSTAL_STONE_CHANCE)
+                    {
+                        double shellNoise = _noise.Noise3D(wx / 12.0 + 9000, y / 12.0, wz / 12.0 + 9000);
+                        if ((shellNoise + 1) / 2 > 0.45)
+                            chunk.SetBlock(x, y, z, 55);
+                    }
                 }
             }
         }
@@ -630,6 +720,318 @@ public class TerrainGenerator
             result = result * (1 - terraceStrength) + terraced * terraceStrength;
         }
         return result;
+    }
+
+    // ---- Phase 3c: Underground Fossils ----
+
+    private void GenerateFossils(Chunk chunk, (int y, string biome)[,] surfaceHeights)
+    {
+        for (int x = 0; x < GameConfig.CHUNK_SIZE; x++)
+        for (int z = 0; z < GameConfig.CHUNK_SIZE; z++)
+        {
+            int wx = chunk.X * GameConfig.CHUNK_SIZE + x;
+            int wz = chunk.Z * GameConfig.CHUNK_SIZE + z;
+
+            double fossilZone = (_noise.Noise2D(wx / GameConfig.FOSSIL_NOISE_SCALE + GameConfig.FOSSIL_NOISE_OFFSET,
+                wz / GameConfig.FOSSIL_NOISE_SCALE + GameConfig.FOSSIL_NOISE_OFFSET) + 1) / 2;
+            if (fossilZone < GameConfig.FOSSIL_THRESHOLD) continue;
+
+            for (int y = GameConfig.FOSSIL_Y_MIN; y <= Math.Min(GameConfig.FOSSIL_Y_MAX, surfaceHeights[x, z].y - 5); y++)
+            {
+                if (chunk.GetBlock(x, y, z) != 3) continue; // only replace stone
+
+                // Rib pattern: periodic curved arcs
+                double ribNoise = _noise.Noise3D(wx / 6.0 + GameConfig.FOSSIL_NOISE_OFFSET,
+                    y / 4.0, wz / 6.0 + GameConfig.FOSSIL_NOISE_OFFSET);
+                double ribPattern = Math.Sin(wx / 3.0) * Math.Cos(wz / 3.0);
+                bool isRib = (ribNoise + 1) / 2 > 0.7 && Math.Abs(ribPattern) > 0.6;
+
+                // Blob pattern: rounded skull/body formations
+                double blobNoise = _noise.Noise3D(wx / 12.0 + GameConfig.FOSSIL_NOISE_OFFSET + 1000,
+                    y / 12.0, wz / 12.0 + GameConfig.FOSSIL_NOISE_OFFSET + 1000);
+                bool isBlob = (blobNoise + 1) / 2 > 0.82;
+
+                if (isRib || isBlob)
+                    chunk.SetBlock(x, y, z, 59); // bone_block
+            }
+        }
+    }
+
+    // ---- Phase 4b: Ancient Ruins ----
+
+    private record struct RuinPalette(byte Primary, byte Secondary, byte Accent, byte Scatter);
+
+    private static readonly Dictionary<string, RuinPalette> RuinPalettes = new()
+    {
+        ["desert"]    = new(17, 56, 58, 5),
+        ["savanna"]   = new(56, 57, 58, 20),
+        ["plains"]    = new(57, 60, 58, 3),
+        ["forest"]    = new(23, 57, 60, 23),
+        ["swamp"]     = new(23, 60, 22, 23),
+        ["hills"]     = new(56, 57, 58, 3),
+        ["mountains"] = new(3, 56, 58, 3),
+        ["tundra"]    = new(56, 60, 3, 28),
+        ["valleys"]   = new(57, 56, 58, 3),
+        ["lakes"]     = new(57, 56, 23, 3),
+    };
+
+    private static double GetBiomeRuinBonus(string biome) => biome switch
+    {
+        "desert" => 0.04, "savanna" => 0.03, "plains" => 0.02, "hills" => 0.02,
+        "valleys" => 0.01, "forest" => 0.0, "lakes" => 0.0,
+        "swamp" => -0.02, "mountains" => -0.03, "tundra" => -0.02,
+        _ => 0.0
+    };
+
+    private void GenerateAncientRuins(Chunk chunk, (int y, string biome)[,] surfaceHeights)
+    {
+        // Use a single chunk-level hash to decide if this chunk gets a ruin.
+        // Simpler and more predictable than stacking two noise filters.
+        int chunkCenterWx = chunk.X * GameConfig.CHUNK_SIZE + GameConfig.CHUNK_SIZE / 2;
+        int chunkCenterWz = chunk.Z * GameConfig.CHUNK_SIZE + GameConfig.CHUNK_SIZE / 2;
+
+        // Use noise to create regional clustering (ruins appear in "ancient zones")
+        double ruinZone = (_noise.Noise2D(chunkCenterWx / GameConfig.RUIN_ZONE_NOISE_SCALE + GameConfig.RUIN_NOISE_OFFSET,
+            chunkCenterWz / GameConfig.RUIN_ZONE_NOISE_SCALE + GameConfig.RUIN_NOISE_OFFSET) + 1) / 2;
+
+        string centerBiome = surfaceHeights[GameConfig.CHUNK_SIZE / 2, GameConfig.CHUNK_SIZE / 2].biome;
+        double threshold = GameConfig.RUIN_ZONE_THRESHOLD - GetBiomeRuinBonus(centerBiome);
+        if (ruinZone < threshold) return;
+
+        // Within a ruin zone, use a per-chunk hash to thin out further (~1 in 3 qualifying chunks)
+        int chunkHash = HashCode.Combine(chunk.X, chunk.Z, _worldSeed, 6161);
+        if (((chunkHash & 0x7FFFFFFF) % 7) != 0) return;
+
+        if (!RuinPalettes.TryGetValue(centerBiome, out var palette))
+            palette = RuinPalettes["plains"];
+
+        // Place a compound ruin complex centered in this chunk
+        int cx = 4 + _random.Next(8); // center X: 4-11 (safe margins)
+        int cz = 4 + _random.Next(8); // center Z: 4-11
+        int centerSurfaceY = surfaceHeights[cx, cz].y;
+        if (centerSurfaceY <= GameConfig.WATER_LEVEL) return;
+
+        // Pick ruin type by hash
+        int structType = (chunkHash >> 4) & 0x7FFFFFFF;
+        switch (structType % 3)
+        {
+            case 0: PlaceTempleComplex(chunk, cx, cz, surfaceHeights, palette, centerBiome); break;
+            case 1: PlaceRuinedFortification(chunk, cx, cz, surfaceHeights, palette, centerBiome); break;
+            case 2: PlaceColumnCircle(chunk, cx, cz, surfaceHeights, palette, centerBiome); break;
+        }
+    }
+
+    // Picks a weathered block variant - never returns 0 (no skipping!)
+    private byte WeatheredBlock(byte block, RuinPalette palette, string biome)
+    {
+        // Forest/swamp moss overgrowth
+        if ((biome == "forest" || biome == "swamp") && _random.NextDouble() < 0.35) return 23;
+        // Occasional scatter replacement for variety
+        if (_random.NextDouble() < 0.12) return palette.Scatter;
+        return block;
+    }
+
+    private void PlaceSolidRuinBlock(Chunk chunk, int x, int y, int z, byte block, RuinPalette palette, string biome)
+    {
+        if (x < 0 || x >= GameConfig.CHUNK_SIZE || z < 0 || z >= GameConfig.CHUNK_SIZE) return;
+        if (y <= 0 || y >= GameConfig.WORLD_HEIGHT) return;
+        if (chunk.GetBlock(x, y, z) != 0) return;
+        chunk.SetBlock(x, y, z, WeatheredBlock(block, palette, biome));
+    }
+
+    // Build a column that is broken at a random height - never leaves floating blocks
+    private void PlaceColumn(Chunk chunk, int x, int baseY, int z, int maxHeight, RuinPalette palette, string biome, bool cap)
+    {
+        int brokenHeight = maxHeight - _random.Next(Math.Max(1, maxHeight / 2)); // break off top portion
+        for (int dy = 1; dy <= brokenHeight; dy++)
+        {
+            int y = baseY + dy;
+            if (y >= GameConfig.WORLD_HEIGHT) break;
+            if (chunk.GetBlock(x, y, z) != 0) break; // stop at existing block
+            byte blk = (cap && dy == brokenHeight) ? palette.Accent : palette.Primary;
+            chunk.SetBlock(x, y, z, WeatheredBlock(blk, palette, biome));
+        }
+    }
+
+    // Build a wall segment - broken from top down, never floating
+    private void PlaceWallSegment(Chunk chunk, int x1, int z1, int x2, int z2,
+        (int y, string biome)[,] surfaceHeights, int maxHeight, RuinPalette palette, string biome)
+    {
+        int dx = x2 == x1 ? 0 : (x2 > x1 ? 1 : -1);
+        int dz = z2 == z1 ? 0 : (z2 > z1 ? 1 : -1);
+        int steps = Math.Max(Math.Abs(x2 - x1), Math.Abs(z2 - z1));
+
+        for (int i = 0; i <= steps; i++)
+        {
+            int wx = x1 + dx * i;
+            int wz = z1 + dz * i;
+            if (wx < 0 || wx >= GameConfig.CHUNK_SIZE || wz < 0 || wz >= GameConfig.CHUNK_SIZE) continue;
+
+            int surfaceY = surfaceHeights[wx, wz].y;
+            if (surfaceY <= GameConfig.WATER_LEVEL) continue;
+
+            // Wall height varies but decay is from top down (no gaps)
+            int wallH = maxHeight - _random.Next(2);
+            // Random chance to have a gap in the wall (a collapsed section)
+            if (_random.NextDouble() < 0.12) { wallH = 0; }
+
+            for (int dy = 1; dy <= wallH; dy++)
+            {
+                int y = surfaceY + dy;
+                if (y >= GameConfig.WORLD_HEIGHT) break;
+                if (chunk.GetBlock(wx, y, wz) != 0) break;
+                byte blk = _random.NextDouble() < 0.25 ? palette.Secondary : palette.Primary;
+                chunk.SetBlock(wx, y, wz, WeatheredBlock(blk, palette, biome));
+            }
+        }
+    }
+
+    // Type 0: Temple complex - large floor + columns + optional partial walls
+    private void PlaceTempleComplex(Chunk chunk, int cx, int cz,
+        (int y, string biome)[,] surfaceHeights, RuinPalette palette, string biome)
+    {
+        int hash = HashCode.Combine(chunk.X * 16 + cx, chunk.Z * 16 + cz, _worldSeed, 9999);
+        int halfSize = 3 + (hash & 1); // radius 3-4 (7x7 or 9x9)
+        int columnHeight = 4 + ((hash >> 1) & 1); // 4-5
+
+        // Clamp to chunk boundaries
+        int minX = Math.Max(1, cx - halfSize);
+        int maxX = Math.Min(GameConfig.CHUNK_SIZE - 2, cx + halfSize);
+        int minZ = Math.Max(1, cz - halfSize);
+        int maxZ = Math.Min(GameConfig.CHUNK_SIZE - 2, cz + halfSize);
+        if (maxX - minX < 4 || maxZ - minZ < 4) return; // not enough room
+
+        // Average surface height for the platform
+        int totalY = 0, count = 0;
+        for (int dx = minX; dx <= maxX; dx++)
+        for (int dz = minZ; dz <= maxZ; dz++)
+        { totalY += surfaceHeights[dx, dz].y; count++; }
+        int baseY = totalY / count;
+        if (baseY <= GameConfig.WATER_LEVEL || baseY + columnHeight + 2 >= GameConfig.WORLD_HEIGHT) return;
+
+        // Floor platform - fill gaps between surface and baseY too
+        for (int dx = minX; dx <= maxX; dx++)
+        for (int dz = minZ; dz <= maxZ; dz++)
+        {
+            if (_random.NextDouble() < 0.08) continue; // missing tile
+            // Fill from surface up to baseY+1 to create a level platform
+            int localSurface = surfaceHeights[dx, dz].y;
+            for (int y = localSurface + 1; y <= baseY + 1; y++)
+                PlaceSolidRuinBlock(chunk, dx, y, dz, palette.Secondary, palette, biome);
+        }
+
+        // Columns at corners and optionally mid-edges
+        int[][] columnPositions = [
+            [minX, minZ], [maxX, minZ], [minX, maxZ], [maxX, maxZ], // corners
+            [(minX + maxX) / 2, minZ], [(minX + maxX) / 2, maxZ],   // mid-edges
+            [minX, (minZ + maxZ) / 2], [maxX, (minZ + maxZ) / 2],
+        ];
+        foreach (var pos in columnPositions)
+            PlaceColumn(chunk, pos[0], baseY + 1, pos[1], columnHeight, palette, biome, cap: true);
+
+        // Partial walls along 2 random edges
+        if (_random.NextDouble() < 0.7)
+            PlaceWallSegment(chunk, minX, minZ, maxX, minZ, surfaceHeights, 2 + _random.Next(2), palette, biome);
+        if (_random.NextDouble() < 0.5)
+            PlaceWallSegment(chunk, minX, maxZ, maxX, maxZ, surfaceHeights, 2 + _random.Next(2), palette, biome);
+
+        // Chiseled accent block at center
+        PlaceSolidRuinBlock(chunk, cx, baseY + 2, cz, palette.Accent, palette, biome);
+    }
+
+    // Type 1: Ruined fortification - L-shaped or U-shaped walls with corner towers
+    private void PlaceRuinedFortification(Chunk chunk, int cx, int cz,
+        (int y, string biome)[,] surfaceHeights, RuinPalette palette, string biome)
+    {
+        int hash = HashCode.Combine(chunk.X * 16 + cx, chunk.Z * 16 + cz, _worldSeed, 5555);
+        int halfSize = 3 + ((hash >> 2) & 1); // 3-4
+        int wallHeight = 3 + ((hash >> 3) & 1); // 3-4
+        int shape = (hash >> 4) & 3; // 0=L, 1=U, 2=full rect, 3=single long wall
+
+        int minX = Math.Max(1, cx - halfSize);
+        int maxX = Math.Min(GameConfig.CHUNK_SIZE - 2, cx + halfSize);
+        int minZ = Math.Max(1, cz - halfSize);
+        int maxZ = Math.Min(GameConfig.CHUNK_SIZE - 2, cz + halfSize);
+        if (maxX - minX < 4 || maxZ - minZ < 4) return;
+
+        // Walls based on shape
+        // North wall (always present)
+        PlaceWallSegment(chunk, minX, minZ, maxX, minZ, surfaceHeights, wallHeight, palette, biome);
+
+        if (shape >= 1) // U or rect: add east and west walls
+        {
+            PlaceWallSegment(chunk, minX, minZ, minX, maxZ, surfaceHeights, wallHeight, palette, biome);
+            PlaceWallSegment(chunk, maxX, minZ, maxX, maxZ, surfaceHeights, wallHeight, palette, biome);
+        }
+        else // L-shape: only one side wall
+        {
+            PlaceWallSegment(chunk, minX, minZ, minX, maxZ, surfaceHeights, wallHeight, palette, biome);
+        }
+
+        if (shape == 2) // Full rectangle: add south wall
+            PlaceWallSegment(chunk, minX, maxZ, maxX, maxZ, surfaceHeights, wallHeight - 1, palette, biome);
+
+        if (shape == 3) // Single long wall with buttresses
+        {
+            PlaceWallSegment(chunk, minX, cz, maxX, cz, surfaceHeights, wallHeight, palette, biome);
+            // Buttresses every 3 blocks
+            for (int bx = minX; bx <= maxX; bx += 3)
+            {
+                if (cz + 1 < GameConfig.CHUNK_SIZE)
+                    PlaceColumn(chunk, bx, surfaceHeights[bx, cz].y, cz + 1, wallHeight - 1, palette, biome, cap: false);
+            }
+        }
+
+        // Corner towers (taller columns)
+        int towerHeight = wallHeight + 2;
+        PlaceColumn(chunk, minX, surfaceHeights[minX, minZ].y, minZ, towerHeight, palette, biome, cap: true);
+        PlaceColumn(chunk, maxX, surfaceHeights[maxX, minZ].y, minZ, towerHeight, palette, biome, cap: true);
+        if (shape >= 1)
+        {
+            PlaceColumn(chunk, minX, surfaceHeights[minX, maxZ].y, maxZ, towerHeight, palette, biome, cap: true);
+            PlaceColumn(chunk, maxX, surfaceHeights[maxX, maxZ].y, maxZ, towerHeight, palette, biome, cap: true);
+        }
+    }
+
+    // Type 2: Circle of columns with central altar - mystical feel
+    private void PlaceColumnCircle(Chunk chunk, int cx, int cz,
+        (int y, string biome)[,] surfaceHeights, RuinPalette palette, string biome)
+    {
+        int hash = HashCode.Combine(chunk.X * 16 + cx, chunk.Z * 16 + cz, _worldSeed, 7777);
+        int radius = 3 + (hash & 1); // 3-4 block radius
+        int columnHeight = 3 + ((hash >> 1) & 1); // 3-4
+        int numColumns = 6 + ((hash >> 2) & 3); // 6-9 columns
+
+        int centerSurfaceY = surfaceHeights[cx, cz].y;
+        if (centerSurfaceY <= GameConfig.WATER_LEVEL || centerSurfaceY + columnHeight + 1 >= GameConfig.WORLD_HEIGHT) return;
+
+        // Place columns in a circle
+        for (int i = 0; i < numColumns; i++)
+        {
+            double angle = 2 * Math.PI * i / numColumns;
+            int px = cx + (int)Math.Round(radius * Math.Cos(angle));
+            int pz = cz + (int)Math.Round(radius * Math.Sin(angle));
+
+            if (px < 1 || px >= GameConfig.CHUNK_SIZE - 1 || pz < 1 || pz >= GameConfig.CHUNK_SIZE - 1) continue;
+
+            int surfaceY = surfaceHeights[px, pz].y;
+            if (surfaceY <= GameConfig.WATER_LEVEL) continue;
+
+            // Some columns may be completely collapsed (missing)
+            if (_random.NextDouble() < 0.2) continue;
+
+            PlaceColumn(chunk, px, surfaceY, pz, columnHeight, palette, biome, cap: true);
+        }
+
+        // Central altar: 3x3 platform with accent block on top
+        for (int dx = -1; dx <= 1; dx++)
+        for (int dz = -1; dz <= 1; dz++)
+        {
+            int ax = cx + dx, az = cz + dz;
+            if (ax < 0 || ax >= GameConfig.CHUNK_SIZE || az < 0 || az >= GameConfig.CHUNK_SIZE) continue;
+            PlaceSolidRuinBlock(chunk, ax, centerSurfaceY + 1, az, palette.Secondary, palette, biome);
+        }
+        PlaceSolidRuinBlock(chunk, cx, centerSurfaceY + 2, cz, palette.Accent, palette, biome);
     }
 
     private record struct BiomeDef(double TempCenter, double MoistCenter, int Height, double Amplitude,

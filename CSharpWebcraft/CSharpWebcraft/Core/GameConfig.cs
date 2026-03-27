@@ -115,6 +115,33 @@ public static class GameConfig
     public const int LAVA_SEARCH_DEPTH = 2;
     public const int LAVA_SOURCE_LEVEL = 1;
     public const int LAVA_FALLING_LEVEL = 9;
+
+    // Crystal Caves
+    public const bool CRYSTAL_CAVES_ENABLED = true;
+    public const int CRYSTAL_CAVE_Y_MIN = 5;
+    public const int CRYSTAL_CAVE_Y_MAX = 35;
+    public const float CRYSTAL_CAVE_NOISE_SCALE = 30.0f;
+    public const float CRYSTAL_CAVE_THRESHOLD = 0.72f;
+    public const float CRYSTAL_CLUSTER_CHANCE = 0.12f;
+    public const float CRYSTAL_STONE_CHANCE = 0.25f;
+    public const int CRYSTAL_LIGHT_EMISSION = 10;
+
+    // Ancient Ruins
+    public const bool RUINS_ENABLED = true;
+    public const double RUIN_ZONE_NOISE_SCALE = 250.0;
+    public const double RUIN_ZONE_THRESHOLD = 0.78;
+    public const double RUIN_CENTER_NOISE_SCALE = 30.0;  // unused now
+    public const double RUIN_CENTER_THRESHOLD = 0.88;    // unused now
+    public const int RUIN_NOISE_OFFSET = 8000;
+
+    // Underground Fossils
+    public const bool FOSSILS_ENABLED = true;
+    public const double FOSSIL_NOISE_SCALE = 80.0;
+    public const double FOSSIL_THRESHOLD = 0.85;
+    public const int FOSSIL_Y_MIN = 10;
+    public const int FOSSIL_Y_MAX = 45;
+    public const int FOSSIL_NOISE_OFFSET = 11000;
+
     public const bool WATER_FLOW_ENABLED = true;
     public const float WATER_TICK_INTERVAL = 0.25f;
     public const int WATER_MAX_UPDATES_PER_FRAME = 30;

@@ -59,6 +59,20 @@ public static class TextureGenerator
         DrawLilyPad(5, 3);
         DrawHangingMoss(6, 3);
         DrawTorch(7, 3);
+
+        // Crystal Caves
+        DrawCrystal(9, 3, 300, 140, 60, 200);   // amethyst
+        DrawCrystal(10, 3, 316, 40, 200, 90);   // emerald
+        DrawCrystal(11, 3, 332, 50, 100, 220);  // sapphire
+        DrawCrystal(12, 3, 348, 210, 40, 60);   // ruby
+        DrawCrystalStone(13, 3);
+
+        // Ancient Ruins & Fossils
+        DrawAncientStone(14, 3);
+        DrawAncientStoneBricks(15, 3);
+        DrawChiseledStone(0, 7);
+        DrawBoneBlock(1, 7);
+        DrawCrackedStoneBricks(2, 7);
     }
 
     // ---- Helpers ----
@@ -909,6 +923,193 @@ public static class TextureGenerator
                     }
                 }
             }
+        }
+    }
+
+    // ---- Crystal Caves ----
+
+    static void DrawCrystal(int tx, int ty, int hashOffset, float baseR, float baseG, float baseB)
+    {
+        for (int y = 0; y < 16; y++)
+        for (int x = 0; x < 16; x++)
+        {
+            float h = Hash(x + hashOffset, y + 64);
+            float n = VNoise(x, y, 4, hashOffset);
+
+            // Angular facets via Manhattan distance in tiling cells
+            float fx = (x + 0.5f) % 5 - 2.5f;
+            float fy = (y + 0.5f) % 6 - 3.0f;
+            float facetDist = MathF.Abs(fx) + MathF.Abs(fy);
+            float facetVal = facetDist / 5.5f;
+
+            // Diagonal streak highlights (light catching crystal faces)
+            float streak = MathF.Sin((x + y) * 0.9f + n * 4) * 0.5f + 0.5f;
+            bool isHighlight = streak > 0.8f && h > 0.4f;
+            bool isDeepFacet = facetVal < 0.3f;
+
+            float brightness = 0.6f + facetVal * 0.3f + n * 0.1f;
+            if (isHighlight) brightness = 1.3f;
+            if (isDeepFacet) brightness *= 0.7f;
+
+            float r = baseR * brightness + h * 14 - 7;
+            float g = baseG * brightness + h * 12 - 6;
+            float b = baseB * brightness + h * 10 - 5;
+
+            // Rare sparkle pixels
+            if (h > 0.94f) { r += 60; g += 60; b += 60; }
+
+            Px(tx, ty, x, y, r, g, b);
+        }
+    }
+
+    // ---- Ancient Ruins & Fossils ----
+
+    static void DrawAncientStone(int tx, int ty)
+    {
+        for (int y = 0; y < 16; y++)
+        for (int x = 0; x < 16; x++)
+        {
+            float h = Hash(x + 380, y + 80);
+            float n = VNoise(x, y, 4, 400);
+            float n2 = VNoise(x, y, 6, 401);
+            // Warm grey-brown base
+            float v = 115 + n * 22 + h * 14 - 7;
+            float r = v + 8, g = v + 2, b = v - 6;
+            // Weathering patches (darker, greenish)
+            if (n2 > 0.6f) { r -= 15; g -= 5; b -= 10; }
+            // Random cracks
+            bool crack = MathF.Abs((x + y * 0.8f + n * 3) % 8 - 4) < 0.6f;
+            if (crack && h > 0.5f) { r -= 25; g -= 22; b -= 18; }
+            Px(tx, ty, x, y, r, g, b);
+        }
+    }
+
+    static void DrawAncientStoneBricks(int tx, int ty)
+    {
+        for (int y = 0; y < 16; y++)
+        for (int x = 0; x < 16; x++)
+        {
+            float h = Hash(x + 396, y + 80);
+            float n = VNoise(x, y, 3, 410);
+            // Brick pattern: 4-high rows, 8-wide bricks, offset every other row
+            int brickOffsetX = (y / 4 % 2 == 0) ? 0 : 4;
+            bool isMortar = (y % 4 == 0) || ((x + brickOffsetX) % 8 == 0);
+            if (isMortar)
+            {
+                Px(tx, ty, x, y, 75 + h * 10, 68 + h * 8, 55 + h * 6);
+            }
+            else
+            {
+                float v = 140 + n * 18 + h * 14 - 7;
+                float r = v + 6, g = v, b = v - 10;
+                float brickHash = Hash2(x / 8, y / 4, 411);
+                r += (brickHash - 0.5f) * 20;
+                g += (brickHash - 0.5f) * 15;
+                Px(tx, ty, x, y, r, g, b);
+            }
+        }
+    }
+
+    static void DrawChiseledStone(int tx, int ty)
+    {
+        for (int y = 0; y < 16; y++)
+        for (int x = 0; x < 16; x++)
+        {
+            float h = Hash(x + 412, y + 80);
+            float n = VNoise(x, y, 4, 420);
+            float dx = x - 7.5f, dy = y - 7.5f;
+
+            bool isBorder = x == 0 || x == 15 || y == 0 || y == 15;
+            bool isInnerBorder = x == 1 || x == 14 || y == 1 || y == 14;
+            // Central diamond motif
+            bool isDiamond = MathF.Abs(dx) + MathF.Abs(dy) < 4.5f &&
+                             MathF.Abs(dx) + MathF.Abs(dy) > 2.5f;
+
+            float v = 145 + n * 15 + h * 12 - 6;
+            float r, g, b;
+            if (isBorder) { r = 95 + h * 10; g = 88 + h * 8; b = 75 + h * 6; }
+            else if (isInnerBorder) { r = 110 + h * 10; g = 103 + h * 8; b = 90 + h * 6; }
+            else if (isDiamond) { r = v - 20; g = v - 18; b = v - 22; }
+            else { r = v + 5; g = v; b = v - 8; }
+
+            Px(tx, ty, x, y, r, g, b);
+        }
+    }
+
+    static void DrawBoneBlock(int tx, int ty)
+    {
+        for (int y = 0; y < 16; y++)
+        for (int x = 0; x < 16; x++)
+        {
+            float h = Hash(x + 428, y + 80);
+            float n = VNoise(x, y, 3, 430);
+            float n2 = VNoise(x, y, 5, 431);
+            // Pale cream base
+            float r = 225 + n * 12 + h * 10 - 5;
+            float g = 215 + n * 10 + h * 10 - 5;
+            float b = 190 + n * 8 + h * 8 - 4;
+            // Porous dark spots
+            if (n2 > 0.7f) { r -= 20; g -= 18; b -= 15; }
+            // Subtle vertical grain
+            float grain = MathF.Sin(x * 1.5f + n * 2) * 0.5f + 0.5f;
+            r += grain * 5 - 2.5f;
+            g += grain * 4 - 2;
+            Px(tx, ty, x, y, r, g, b);
+        }
+    }
+
+    static void DrawCrackedStoneBricks(int tx, int ty)
+    {
+        for (int y = 0; y < 16; y++)
+        for (int x = 0; x < 16; x++)
+        {
+            float h = Hash(x + 444, y + 80);
+            float n = VNoise(x, y, 3, 440);
+            int brickOffsetX = (y / 4 % 2 == 0) ? 0 : 4;
+            bool isMortar = (y % 4 == 0) || ((x + brickOffsetX) % 8 == 0);
+            float r, g, b;
+            if (isMortar)
+            {
+                r = 75 + h * 10; g = 68 + h * 8; b = 55 + h * 6;
+            }
+            else
+            {
+                float v = 135 + n * 16 + h * 14 - 7;
+                float brickHash = Hash2(x / 8, y / 4, 441);
+                r = v + 4 + (brickHash - 0.5f) * 18;
+                g = v - 2 + (brickHash - 0.5f) * 14;
+                b = v - 12;
+            }
+            // Prominent diagonal cracks
+            float crack1 = MathF.Abs((x * 0.7f + y - 10) % 11 - 5.5f);
+            float crack2 = MathF.Abs((x - y * 0.6f + 8) % 9 - 4.5f);
+            if (crack1 < 0.7f || crack2 < 0.6f) { r -= 30; g -= 28; b -= 22; }
+            Px(tx, ty, x, y, r, g, b);
+        }
+    }
+
+    static void DrawCrystalStone(int tx, int ty)
+    {
+        for (int y = 0; y < 16; y++)
+        for (int x = 0; x < 16; x++)
+        {
+            float h = Hash(x + 364, y + 64);
+            float n = VNoise(x, y, 4, 364);
+            // Dark stone base with subtle blue/purple tint
+            float v = 60 + n * 20 + h * 14 - 7;
+            float r = v - 5;
+            float g = v - 8;
+            float b = v + 10;
+            // Crystalline veins
+            float vein = VNoise(x, y, 2, 380);
+            if (vein > 0.72f)
+            {
+                float intensity = (vein - 0.72f) * 5;
+                r += 40 * intensity;
+                g += 20 * intensity;
+                b += 60 * intensity;
+            }
+            Px(tx, ty, x, y, r, g, b);
         }
     }
 }

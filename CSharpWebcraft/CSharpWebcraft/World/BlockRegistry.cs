@@ -63,6 +63,20 @@ public static class BlockRegistry
         Register(48, "lily_pad", transparent: true, flatBillboard: true, opacity: 0.9f, tex: BlockTexture.All(5,3));
         Register(49, "hanging_moss", billboard: true, tex: BlockTexture.All(6,3));
         Register(50, "torch", color: 0xFFDD44, transparent: true, billboard: true, lightEmission: 14, tex: BlockTexture.All(7,3));
+
+        // Crystal Caves
+        Register(51, "crystal_amethyst", color: 0xBB66FF, lightEmission: GameConfig.CRYSTAL_LIGHT_EMISSION, tex: BlockTexture.All(9,3));
+        Register(52, "crystal_emerald",  color: 0x44FF88, lightEmission: GameConfig.CRYSTAL_LIGHT_EMISSION, tex: BlockTexture.All(10,3));
+        Register(53, "crystal_sapphire", color: 0x4488FF, lightEmission: GameConfig.CRYSTAL_LIGHT_EMISSION, tex: BlockTexture.All(11,3));
+        Register(54, "crystal_ruby",     color: 0xFF4466, lightEmission: GameConfig.CRYSTAL_LIGHT_EMISSION, tex: BlockTexture.All(12,3));
+        Register(55, "crystal_stone",    color: 0x555566, tex: BlockTexture.All(13,3));
+
+        // Ancient Ruins & Fossils
+        Register(56, "ancient_stone",         tex: BlockTexture.All(14,3));
+        Register(57, "ancient_stone_bricks",  tex: BlockTexture.All(15,3));
+        Register(58, "chiseled_stone",        tex: BlockTexture.All(0,7));
+        Register(59, "bone_block",            tex: BlockTexture.All(1,7));
+        Register(60, "cracked_stone_bricks",  tex: BlockTexture.All(2,7));
     }
 
     private static void Register(int id, string name,

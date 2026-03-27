@@ -74,7 +74,7 @@ public class PlayerController
             if (moveDir.LengthSquared > 0.001f)
                 moveDir = Vector3.Normalize(moveDir);
             moveDir *= GameConfig.MOVEMENT_SPEED * SpeedMultiplier * 2f;
-            _camera.Position += moveDir;
+            _camera.PlayerPosition += moveDir;
             _physics.VelocityY = 0;
             return;
         }
@@ -95,34 +95,34 @@ public class PlayerController
         {
             if (stepMove.X != 0)
             {
-                float newX = _camera.Position.X + stepMove.X;
-                if (!_physics.CheckCollision(newX, _camera.Position.Y, _camera.Position.Z))
-                    _camera.Position.X = newX;
+                float newX = _camera.PlayerPosition.X + stepMove.X;
+                if (!_physics.CheckCollision(newX, _camera.PlayerPosition.Y, _camera.PlayerPosition.Z))
+                    _camera.PlayerPosition.X = newX;
                 else if (_physics.IsOnGround && !isUnderwater)
                 {
-                    float sUY = _camera.Position.Y + GameConfig.STEP_UP_HEIGHT;
-                    if (!_physics.CheckCollision(_camera.Position.X, sUY + GameConfig.PLAYER_HEIGHT * 0.8f, _camera.Position.Z) &&
-                        !_physics.CheckCollision(newX, sUY, _camera.Position.Z))
+                    float sUY = _camera.PlayerPosition.Y + GameConfig.STEP_UP_HEIGHT;
+                    if (!_physics.CheckCollision(_camera.PlayerPosition.X, sUY + GameConfig.PLAYER_HEIGHT * 0.8f, _camera.PlayerPosition.Z) &&
+                        !_physics.CheckCollision(newX, sUY, _camera.PlayerPosition.Z))
                     {
                         _physics.StartStepUp(sUY);
-                        _camera.Position.X = newX;
+                        _camera.PlayerPosition.X = newX;
                     }
                 }
             }
 
             if (stepMove.Z != 0)
             {
-                float newZ = _camera.Position.Z + stepMove.Z;
-                if (!_physics.CheckCollision(_camera.Position.X, _camera.Position.Y, newZ))
-                    _camera.Position.Z = newZ;
+                float newZ = _camera.PlayerPosition.Z + stepMove.Z;
+                if (!_physics.CheckCollision(_camera.PlayerPosition.X, _camera.PlayerPosition.Y, newZ))
+                    _camera.PlayerPosition.Z = newZ;
                 else if (_physics.IsOnGround && !isUnderwater)
                 {
-                    float sUY = _camera.Position.Y + GameConfig.STEP_UP_HEIGHT;
-                    if (!_physics.CheckCollision(_camera.Position.X, sUY + GameConfig.PLAYER_HEIGHT * 0.8f, _camera.Position.Z) &&
-                        !_physics.CheckCollision(_camera.Position.X, sUY, newZ))
+                    float sUY = _camera.PlayerPosition.Y + GameConfig.STEP_UP_HEIGHT;
+                    if (!_physics.CheckCollision(_camera.PlayerPosition.X, sUY + GameConfig.PLAYER_HEIGHT * 0.8f, _camera.PlayerPosition.Z) &&
+                        !_physics.CheckCollision(_camera.PlayerPosition.X, sUY, newZ))
                     {
                         _physics.StartStepUp(sUY);
-                        _camera.Position.Z = newZ;
+                        _camera.PlayerPosition.Z = newZ;
                     }
                 }
             }

@@ -101,6 +101,21 @@ public class MobRenderer : IDisposable
         GL.BindVertexArray(0);
     }
 
+    public void RenderPlayerMesh(MobMeshData meshData, Shader blockShader)
+    {
+        if (meshData.VertexCount == 0) return;
+
+        GL.BindVertexArray(_vao);
+        GL.BindBuffer(BufferTarget.ArrayBuffer, _vbo);
+
+        int dataSize = meshData.VertexCount * ChunkMesh.FloatsPerVertex * sizeof(float);
+        GL.BufferData(BufferTarget.ArrayBuffer, dataSize, meshData.Vertices, BufferUsageHint.StreamDraw);
+
+        blockShader.SetMatrix4("uModel", Matrix4.Identity);
+        GL.DrawArrays(PrimitiveType.Triangles, 0, meshData.VertexCount);
+        GL.BindVertexArray(0);
+    }
+
     public void Dispose()
     {
         if (!_disposed)

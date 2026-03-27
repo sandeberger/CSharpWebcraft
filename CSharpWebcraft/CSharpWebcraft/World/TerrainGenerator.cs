@@ -99,6 +99,10 @@ public class TerrainGenerator
         if (GameConfig.CRYSTAL_CAVES_ENABLED)
             GenerateCrystalCaves(chunk, surfaceHeights);
 
+        // Phase 3d: Mushroom caves
+        if (GameConfig.MUSHROOM_CAVES_ENABLED)
+            GenerateMushroomCaves(chunk, surfaceHeights);
+
         // Phase 3c: Underground fossils
         if (GameConfig.FOSSILS_ENABLED)
             GenerateFossils(chunk, surfaceHeights);
@@ -369,6 +373,99 @@ public class TerrainGenerator
                         double shellNoise = _noise.Noise3D(wx / 12.0 + 9000, y / 12.0, wz / 12.0 + 9000);
                         if ((shellNoise + 1) / 2 > 0.45)
                             chunk.SetBlock(x, y, z, 55);
+                    }
+                }
+            }
+        }
+    }
+
+    private void GenerateMushroomCaves(Chunk chunk, (int y, string biome)[,] surfaceHeights)
+    {
+        byte[] mushroomBlocks = { 61, 62, 63 }; // cyan, purple, green
+
+        for (int x = 1; x < GameConfig.CHUNK_SIZE - 1; x++)
+        for (int z = 1; z < GameConfig.CHUNK_SIZE - 1; z++)
+        {
+            // Mushroom caves favor forest, swamp, valleys, plains
+            string biome = surfaceHeights[x, z].biome;
+            double biomeBonus = biome switch
+            {
+                "forest"  => 0.08,
+                "swamp"   => 0.10,
+                "valleys" => 0.06,
+                "plains"  => 0.04,
+                "hills"   => 0.02,
+                _ => 0.0
+            };
+            if (biomeBonus <= 0) continue;
+
+            int wx = chunk.X * GameConfig.CHUNK_SIZE + x;
+            int wz = chunk.Z * GameConfig.CHUNK_SIZE + z;
+            int offset = GameConfig.MUSHROOM_CAVE_NOISE_OFFSET;
+
+            // 2D zone noise determines mushroom cave regions (separate from crystal caves)
+            double zoneNoise = (_noise.Noise2D(
+                wx / (double)GameConfig.MUSHROOM_CAVE_NOISE_SCALE + offset,
+                wz / (double)GameConfig.MUSHROOM_CAVE_NOISE_SCALE + offset) + 1) / 2;
+            if (zoneNoise < GameConfig.MUSHROOM_CAVE_THRESHOLD - biomeBonus)
+                continue;
+
+            // Color zone: picks dominant mushroom type
+            double colorNoise = (_noise.Noise2D(wx / 180.0 + offset + 2000, wz / 180.0 + offset + 2000) + 1) / 2;
+            int mushroomIndex = (int)(colorNoise * 3) % 3;
+            byte primaryMushroom = mushroomBlocks[mushroomIndex];
+            byte secondaryMushroom = mushroomBlocks[(mushroomIndex + 1) % 3];
+
+            int[][] dirs = { new[]{1,0,0}, new[]{-1,0,0}, new[]{0,0,1}, new[]{0,0,-1}, new[]{0,1,0}, new[]{0,-1,0} };
+
+            for (int y = GameConfig.MUSHROOM_CAVE_Y_MIN; y <= GameConfig.MUSHROOM_CAVE_Y_MAX; y++)
+            {
+                byte block = chunk.GetBlock(x, y, z);
+
+                if (block == 0) // Air inside a cave
+                {
+                    // Check for solid block below (mushrooms grow on cave floor)
+                    byte below = chunk.GetBlock(x, y - 1, z);
+                    bool onFloor = below == 3 || below == 64; // stone or mycelium
+
+                    // Check for solid block above (mushrooms can grow on ceiling too)
+                    byte above = chunk.GetBlock(x, y + 1, z);
+                    bool onCeiling = above == 3 || above == 64;
+
+                    if (!onFloor && !onCeiling) continue;
+
+                    // 3D cluster noise for organic clumps
+                    double clusterNoise = _noise.Noise3D(wx / 6.0 + offset + 4000, y / 6.0, wz / 6.0 + offset + 4000);
+                    double clusterVal = (clusterNoise + 1) / 2;
+
+                    if (clusterVal > 0.50 && _random.NextDouble() < GameConfig.MUSHROOM_CLUSTER_CHANCE)
+                    {
+                        byte mushroom = _random.NextDouble() < 0.75 ? primaryMushroom : secondaryMushroom;
+                        chunk.SetBlock(x, y, z, mushroom);
+                    }
+                    // Sparse spore clouds in open cave air (must have space around)
+                    else if (onFloor && _random.NextDouble() < GameConfig.SPORE_CLOUD_CHANCE)
+                    {
+                        // Only place spores if there's enough vertical room
+                        if (chunk.GetBlock(x, y + 1, z) == 0 && chunk.GetBlock(x, y + 2, z) == 0)
+                            chunk.SetBlock(x, y + 1, z, 65); // spore cloud floats above floor
+                    }
+                }
+                else if (block == 3) // Stone — convert to mycelium near cave air
+                {
+                    bool adjacentToAir = false;
+                    foreach (var d in dirs)
+                    {
+                        if (chunk.GetBlock(x + d[0], y + d[1], z + d[2]) == 0)
+                        { adjacentToAir = true; break; }
+                    }
+
+                    if (adjacentToAir && _random.NextDouble() < GameConfig.MYCELIUM_SPREAD_CHANCE)
+                    {
+                        // Mycelium spreads on cave surfaces with organic noise
+                        double mycelNoise = _noise.Noise3D(wx / 10.0 + offset + 6000, y / 10.0, wz / 10.0 + offset + 6000);
+                        if ((mycelNoise + 1) / 2 > 0.40)
+                            chunk.SetBlock(x, y, z, 64); // mycelium
                     }
                 }
             }

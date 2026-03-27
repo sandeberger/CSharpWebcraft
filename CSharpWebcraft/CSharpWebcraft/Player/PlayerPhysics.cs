@@ -48,9 +48,9 @@ public class PlayerPhysics
         if (_swimStrokeCooldown > 0) _swimStrokeCooldown -= deltaTime;
 
         // Check underwater
-        int headX = (int)MathF.Floor(_camera.Position.X);
-        int headY = (int)MathF.Floor(_camera.Position.Y);
-        int headZ = (int)MathF.Floor(_camera.Position.Z);
+        int headX = (int)MathF.Floor(_camera.PlayerPosition.X);
+        int headY = (int)MathF.Floor(_camera.PlayerPosition.Y);
+        int headZ = (int)MathF.Floor(_camera.PlayerPosition.Z);
         IsUnderwater = _world.GetBlockAt(headX, headY, headZ) == 9;
 
         // Step up handling
@@ -59,13 +59,13 @@ public class PlayerPhysics
             _stepUpProgress += GameConfig.STEP_UP_SPEED * deltaTime;
             if (_stepUpProgress >= 1f)
             {
-                _camera.Position.Y = _stepUpTarget;
+                _camera.PlayerPosition.Y = _stepUpTarget;
                 IsSteppingUp = false;
                 IsOnGround = true;
             }
             else
             {
-                _camera.Position.Y += (_stepUpTarget - _camera.Position.Y) * deltaTime * GameConfig.STEP_UP_SPEED;
+                _camera.PlayerPosition.Y += (_stepUpTarget - _camera.PlayerPosition.Y) * deltaTime * GameConfig.STEP_UP_SPEED;
                 IsOnGround = true;
                 VelocityY = 0;
             }
@@ -87,23 +87,26 @@ public class PlayerPhysics
 
         float feetOffset = GameConfig.PLAYER_HEIGHT * 0.5f;
         float headOffset = GameConfig.PLAYER_HEIGHT * 0.45f;
-        float newY = _camera.Position.Y + VelocityY;
+        float newY = _camera.PlayerPosition.Y + VelocityY;
 
-        if (VelocityY <= 0 && CheckCollision(_camera.Position.X, newY - feetOffset, _camera.Position.Z))
+        if (VelocityY <= 0 && CheckFeetOnGround(_camera.PlayerPosition.X, newY - feetOffset, _camera.PlayerPosition.Z))
         {
+            // Snap to top of ground block
+            int groundBlockY = (int)MathF.Floor(newY - feetOffset);
+            _camera.PlayerPosition.Y = groundBlockY + 1f + feetOffset;
             VelocityY = 0;
             IsOnGround = true;
         }
-        else if (VelocityY > 0 && CheckCollision(_camera.Position.X, newY + headOffset, _camera.Position.Z))
+        else if (VelocityY > 0 && CheckFeetOnGround(_camera.PlayerPosition.X, newY + headOffset, _camera.PlayerPosition.Z))
         {
             float ceilY = MathF.Floor(newY + headOffset);
-            _camera.Position.Y = ceilY - headOffset - 0.01f;
+            _camera.PlayerPosition.Y = ceilY - headOffset - 0.01f;
             VelocityY = 0;
             IsOnGround = false;
         }
         else
         {
-            _camera.Position.Y = newY;
+            _camera.PlayerPosition.Y = newY;
             IsOnGround = false;
         }
 
@@ -127,6 +130,27 @@ public class PlayerPhysics
             Oxygen = MathF.Min(Oxygen + GameConfig.OXYGEN_REGENERATION_RATE * deltaTime, GameConfig.OXYGEN_MAX);
             _oxygenDamageTimer = 0;
         }
+    }
+
+    /// <summary>
+    /// Check only at the given Y level using XZ offsets. For ground/ceiling detection.
+    /// </summary>
+    private bool CheckFeetOnGround(float x, float y, float z)
+    {
+        int wy = (int)MathF.Floor(y);
+        for (int xzIdx = 0; xzIdx < 9; xzIdx++)
+        {
+            float pX = x + CheckXZOffsets[xzIdx].dx;
+            float pZ = z + CheckXZOffsets[xzIdx].dz;
+
+            int wx = (int)MathF.Floor(pX);
+            int wz = (int)MathF.Floor(pZ);
+            byte blkType = _world.GetBlockAt(wx, wy, wz);
+
+            if (!BlockRegistry.IsPassable(blkType))
+                return true;
+        }
+        return false;
     }
 
     public bool CheckCollision(float x, float y, float z)
@@ -169,8 +193,8 @@ public class PlayerPhysics
         if (_swimStrokeCooldown <= 0)
         {
             VelocityY += GameConfig.SWIM_STROKE_FORCE * 0.7f;
-            _camera.Position.X += front.X * GameConfig.SWIM_STROKE_FORCE * 0.5f;
-            _camera.Position.Z += front.Z * GameConfig.SWIM_STROKE_FORCE * 0.5f;
+            _camera.PlayerPosition.X += front.X * GameConfig.SWIM_STROKE_FORCE * 0.5f;
+            _camera.PlayerPosition.Z += front.Z * GameConfig.SWIM_STROKE_FORCE * 0.5f;
             _swimStrokeCooldown = 0.3f;
         }
     }

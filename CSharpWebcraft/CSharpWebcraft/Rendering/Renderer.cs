@@ -70,7 +70,7 @@ public class Renderer
     public RainRenderer Rain => _rainRenderer;
     public LeafParticleRenderer Leaves => _leafRenderer;
 
-    public void Render(Camera camera, WorldManager world, GameTime gameTime, WeatherSystem? weather = null, float skyMultiplier = 1f, bool isUnderwater = false, MobManager? mobManager = null, CritterManager? critterManager = null, WindSystem? wind = null, float auroraStrength = 0f)
+    public void Render(Camera camera, WorldManager world, GameTime gameTime, WeatherSystem? weather = null, float skyMultiplier = 1f, bool isUnderwater = false, MobManager? mobManager = null, CritterManager? critterManager = null, WindSystem? wind = null, float auroraStrength = 0f, MobMeshData? playerMesh = null)
     {
         // Render scene to HDR FBO for post-processing
         _postProcessing.BeginScenePass();
@@ -186,6 +186,13 @@ public class Renderer
         {
             _blockShader.SetFloat("uAlphaTest", 0.01f);
             _mobRenderer.Render(mobManager, _blockShader, world, skyMultiplier);
+        }
+
+        // Player model pass (third-person only)
+        if (playerMesh.HasValue && playerMesh.Value.VertexCount > 0)
+        {
+            _blockShader.SetFloat("uAlphaTest", 0.01f);
+            _mobRenderer.RenderPlayerMesh(playerMesh.Value, _blockShader);
         }
 
         // Critter pass (ambient creatures — billboards need no cull, low alpha test)

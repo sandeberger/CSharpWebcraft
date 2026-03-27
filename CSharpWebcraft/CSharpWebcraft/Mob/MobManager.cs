@@ -24,13 +24,13 @@ public class MobManager
         _world = world;
     }
 
-    public void Update(float dt, Vector3 playerPos)
+    public void Update(float dt, Vector3 playerPos, float gameHour = 12f)
     {
         // Spawn timer
         _spawnTimer -= dt;
         if (_spawnTimer <= 0 && _mobs.Count < MaxMobs)
         {
-            TrySpawnMob(playerPos);
+            TrySpawnMob(playerPos, gameHour);
             _spawnTimer = SpawnInterval;
         }
 
@@ -51,6 +51,38 @@ public class MobManager
         }
     }
 
+    /// <summary>Console command: spawn mobs by type name.</summary>
+    public int SpawnCommand(string type, float x, float z, int count)
+    {
+        int ix = (int)MathF.Floor(x);
+        int iz = (int)MathF.Floor(z);
+        int groundY = _world.GetColumnHeight(ix, iz);
+        if (groundY < 1) return 0;
+
+        int spawned = 0;
+        for (int i = 0; i < count && _mobs.Count < MaxMobs; i++)
+        {
+            float offsetX = (Random.Shared.NextSingle() - 0.5f) * 3f;
+            float offsetZ = (Random.Shared.NextSingle() - 0.5f) * 3f;
+            Vector3 pos = new(x + offsetX, groundY + 1.5f, z + offsetZ);
+
+            MobBase? mob = type switch
+            {
+                "zombie" => new ZombieMob(pos),
+                "spider" => new SpiderMob(pos),
+                "slime" => new CubeSlime(pos, 0.5f + Random.Shared.NextSingle() * 1f),
+                _ => null
+            };
+
+            if (mob == null) return 0;
+
+            _mobs.Add(mob);
+            if (mob is CubeSlime slime) _slimes.Add(slime);
+            spawned++;
+        }
+        return spawned;
+    }
+
     /// <summary>Console command: kill all mobs.</summary>
     public int KillAll()
     {
@@ -60,7 +92,7 @@ public class MobManager
         return count;
     }
 
-    private void TrySpawnMob(Vector3 playerPos)
+    private void TrySpawnMob(Vector3 playerPos, float gameHour)
     {
         // Pick random position around player
         float angle = Random.Shared.NextSingle() * MathF.PI * 2f;
@@ -84,6 +116,22 @@ public class MobManager
             return;
 
         Vector3 spawnPos = new(spawnX, groundY + 1.5f, spawnZ);
+
+        bool isNight = gameHour >= 19 || gameHour < 5;
+
+        // Zombies spawn at night (50% of spawns)
+        if (isNight && Random.Shared.NextSingle() < 0.5f)
+        {
+            int count = 1 + Random.Shared.Next(3); // 1-3 zombies
+            for (int i = 0; i < count && _mobs.Count < MaxMobs; i++)
+            {
+                float offsetX = (Random.Shared.NextSingle() - 0.5f) * 3f;
+                float offsetZ = (Random.Shared.NextSingle() - 0.5f) * 3f;
+                var zombie = new ZombieMob(spawnPos + new Vector3(offsetX, 0, offsetZ));
+                _mobs.Add(zombie);
+            }
+            return;
+        }
 
         // Terrain suitability determines mob type
         bool suitableForSpiders = IsSuitableForSpiders(ix, iz, groundY);

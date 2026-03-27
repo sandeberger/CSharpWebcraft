@@ -67,6 +67,14 @@ public static class TextureGenerator
         DrawCrystal(12, 3, 348, 210, 40, 60);   // ruby
         DrawCrystalStone(13, 3);
 
+        // Mushroom Caves (bioluminescent)
+        DrawGlowMushroom(0, 4, 500, 20, 200, 180);   // cyan
+        DrawGlowMushroom(1, 4, 520, 160, 50, 220);   // purple
+        DrawGlowMushroom(2, 4, 540, 40, 220, 80);    // green
+        DrawMyceliumTop(3, 4);
+        DrawMyceliumSide(4, 4);
+        DrawSporeCloud(5, 4);
+
         // Ancient Ruins & Fossils
         DrawAncientStone(14, 3);
         DrawAncientStoneBricks(15, 3);
@@ -927,6 +935,147 @@ public static class TextureGenerator
     }
 
     // ---- Crystal Caves ----
+
+    // ---- Mushroom Caves (bioluminescent) ----
+
+    static void DrawGlowMushroom(int tx, int ty, int hashOffset, float baseR, float baseG, float baseB)
+    {
+        ClearTile(tx, ty);
+
+        // Stem: thin, pale, slightly luminous
+        for (int y = 9; y < 16; y++)
+        for (int x = 6; x < 10; x++)
+        {
+            float h = Hash(x + hashOffset, y + 32);
+            float glow = MathF.Sin(y * 0.6f) * 0.15f + 0.85f;
+            float r = (baseR * 0.3f + 140) * glow + h * 8 - 4;
+            float g = (baseG * 0.3f + 140) * glow + h * 8 - 4;
+            float b = (baseB * 0.3f + 140) * glow + h * 6 - 3;
+            Px(tx, ty, x, y, r, g, b);
+        }
+
+        // Cap: rounded dome with bioluminescent glow
+        for (int y = 0; y < 10; y++)
+        {
+            int w = y < 3 ? (y + 4) : (y < 6 ? 8 : (y < 8 ? 7 : 6 - (y - 8) * 2));
+            int sx = 8 - (int)MathF.Ceiling(w / 2f);
+            for (int dx = 0; dx < w; dx++)
+            {
+                int x = sx + dx;
+                if (x < 0 || x > 15) continue;
+                float h = Hash(x + hashOffset, y + 32);
+                float edge = MathF.Abs(dx - w / 2f) / MathF.Max(w / 2f, 1);
+
+                // Glowing center, darker edges
+                float glow = 1.2f - edge * 0.5f;
+                // Pulsing vein pattern
+                float vein = MathF.Sin((x + y * 1.3f) * 1.5f + h * 4) * 0.5f + 0.5f;
+                if (vein > 0.75f) glow += 0.3f;
+
+                float r = baseR * glow + h * 16 - 8;
+                float g = baseG * glow + h * 14 - 7;
+                float b = baseB * glow + h * 12 - 6;
+
+                // Bright spots (bioluminescent dots)
+                if (h > 0.88f) { r += 50; g += 50; b += 50; }
+
+                // Underside gills (darker)
+                if (y >= 8) { r *= 0.6f; g *= 0.6f; b *= 0.6f; }
+
+                Px(tx, ty, x, y, r, g, b);
+            }
+        }
+    }
+
+    static void DrawMyceliumTop(int tx, int ty)
+    {
+        for (int y = 0; y < 16; y++)
+        for (int x = 0; x < 16; x++)
+        {
+            float h = Hash(x + 560, y + 48);
+            float n = VNoise(x, y, 4, 560);
+            float n2 = VNoise(x, y, 7, 561);
+
+            // Purple-grey base like fungal soil
+            float v = 95 + n * 20 + h * 12 - 6;
+            float r = v + 18, g = v - 5, b = v + 22;
+
+            // Mycelium thread network (white-ish veins)
+            float thread = MathF.Sin((x * 1.7f + y * 0.9f + n2 * 6) * 1.2f) * 0.5f + 0.5f;
+            if (thread > 0.72f)
+            {
+                r += 45; g += 40; b += 50;
+            }
+
+            // Tiny glowing spore dots
+            if (h > 0.92f)
+            {
+                r = 80; g = 210; b = 190;
+            }
+
+            Px(tx, ty, x, y, r, g, b);
+        }
+    }
+
+    static void DrawMyceliumSide(int tx, int ty)
+    {
+        for (int y = 0; y < 16; y++)
+        for (int x = 0; x < 16; x++)
+        {
+            float h = Hash(x + 580, y + 48);
+            float n = VNoise(x, y, 4, 580);
+
+            // Dirt base with purple tint, transitioning from mycelium top
+            float dirtV = 100 + n * 18 + h * 12 - 6;
+            float topFade = MathF.Max(0, 1 - y / 5f);
+
+            float r = dirtV * (1 - topFade) + (dirtV + 15) * topFade;
+            float g = (dirtV - 8) * (1 - topFade) + (dirtV - 10) * topFade;
+            float b = (dirtV - 4) * (1 - topFade) + (dirtV + 18) * topFade;
+
+            // Mycelium threads hanging down from top
+            if (y < 6)
+            {
+                float thread = MathF.Sin((x * 2.1f + y * 1.4f + n * 5) * 0.8f) * 0.5f + 0.5f;
+                if (thread > 0.7f) { r += 35; g += 30; b += 40; }
+            }
+
+            Px(tx, ty, x, y, r, g, b);
+        }
+    }
+
+    static void DrawSporeCloud(int tx, int ty)
+    {
+        ClearTile(tx, ty);
+        for (int y = 2; y < 14; y++)
+        for (int x = 2; x < 14; x++)
+        {
+            float h = Hash(x + 600, y + 48);
+            float n = VNoise(x, y, 5, 600);
+
+            // Distance from center for round cloud shape
+            float dx = (x - 7.5f) / 6f;
+            float dy = (y - 7.5f) / 6f;
+            float dist = MathF.Sqrt(dx * dx + dy * dy);
+            if (dist > 1.0f) continue;
+
+            // Soft falloff
+            float alpha = (1 - dist) * (0.4f + n * 0.3f + h * 0.2f);
+            if (alpha < 0.15f) continue;
+
+            int a = (int)(alpha * 180);
+
+            // Cyan-green glow color
+            float r = 60 + n * 30 + h * 20;
+            float g = 190 + n * 30 + h * 20;
+            float b = 170 + n * 25 + h * 15;
+
+            // Bright spore particles within cloud
+            if (h > 0.85f) { r += 40; g += 40; b += 40; a = Math.Min(a + 60, 230); }
+
+            Px(tx, ty, x, y, r, g, b, a);
+        }
+    }
 
     static void DrawCrystal(int tx, int ty, int hashOffset, float baseR, float baseG, float baseB)
     {

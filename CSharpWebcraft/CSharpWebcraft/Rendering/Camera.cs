@@ -7,6 +7,7 @@ namespace CSharpWebcraft.Rendering;
 public class Camera
 {
     public Vector3 Position;
+    public Vector3 PlayerPosition;
     public float Yaw = -MathHelper.PiOver2; // Look along -Z initially
     public float Pitch;
 
@@ -22,6 +23,7 @@ public class Camera
     public Camera(Vector3 position, float aspectRatio)
     {
         Position = position;
+        PlayerPosition = position;
         AspectRatio = aspectRatio;
         UpdateVectors();
     }

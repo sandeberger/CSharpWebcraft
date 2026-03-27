@@ -274,14 +274,15 @@ public abstract class MobBase
         float newY = Position.Y + Velocity.Y;
         float feetY = newY - BodyHeight * 0.5f;
 
-        if (Velocity.Y <= 0 && CheckMobCollision(world, Position.X, feetY, Position.Z))
+        if (Velocity.Y <= 0 && CheckFeetOnGround(world, Position.X, feetY, Position.Z))
         {
-            // Land on ground
-            Position.Y = MathF.Floor(feetY) + 1f + BodyHeight * 0.5f;
+            // Land on ground — snap to top of the block the feet hit
+            int groundBlockY = (int)MathF.Floor(feetY);
+            Position.Y = groundBlockY + 1f + BodyHeight * 0.5f;
             Velocity.Y = 0;
             IsOnGround = true;
         }
-        else if (Velocity.Y > 0 && CheckMobCollision(world, Position.X, newY + BodyHeight * 0.5f, Position.Z))
+        else if (Velocity.Y > 0 && CheckFeetOnGround(world, Position.X, newY + BodyHeight * 0.5f, Position.Z))
         {
             Velocity.Y = 0;
             IsOnGround = false;
@@ -294,6 +295,28 @@ public abstract class MobBase
 
         // Clamp to world bounds
         Position.Y = MathF.Max(Position.Y, BodyHeight * 0.5f + 1f);
+    }
+
+    /// <summary>
+    /// Check if there is a solid block at the given Y level, using only XZ body offsets.
+    /// Used for ground/ceiling detection without full-body vertical offsets.
+    /// </summary>
+    protected bool CheckFeetOnGround(WorldManager world, float x, float y, float z)
+    {
+        float halfW = BodyWidth * 0.5f;
+        float[] xOff = { 0, halfW, -halfW };
+        float[] zOff = { 0, halfW, -halfW };
+
+        int wy = (int)MathF.Floor(y);
+        foreach (float dx in xOff)
+        foreach (float dz in zOff)
+        {
+            int wx = (int)MathF.Floor(x + dx);
+            int wz = (int)MathF.Floor(z + dz);
+            if (!BlockRegistry.IsPassable(world.GetBlockAt(wx, wy, wz)))
+                return true;
+        }
+        return false;
     }
 
     protected bool CheckMobCollision(WorldManager world, float x, float y, float z)

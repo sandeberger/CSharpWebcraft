@@ -116,6 +116,19 @@ public static class GameConfig
     public const int LAVA_SOURCE_LEVEL = 1;
     public const int LAVA_FALLING_LEVEL = 9;
 
+    // Mushroom Caves (bioluminescent underground fungal biome)
+    public const bool MUSHROOM_CAVES_ENABLED = true;
+    public const int MUSHROOM_CAVE_Y_MIN = 8;
+    public const int MUSHROOM_CAVE_Y_MAX = 45;
+    public const float MUSHROOM_CAVE_NOISE_SCALE = 35.0f;
+    public const float MUSHROOM_CAVE_THRESHOLD = 0.70f;
+    public const float MUSHROOM_CLUSTER_CHANCE = 0.15f;
+    public const float MYCELIUM_SPREAD_CHANCE = 0.35f;
+    public const float SPORE_CLOUD_CHANCE = 0.04f;
+    public const int MUSHROOM_LIGHT_EMISSION = 9;
+    public const int SPORE_LIGHT_EMISSION = 6;
+    public const int MUSHROOM_CAVE_NOISE_OFFSET = 13000;
+
     // Crystal Caves
     public const bool CRYSTAL_CAVES_ENABLED = true;
     public const int CRYSTAL_CAVE_Y_MIN = 5;

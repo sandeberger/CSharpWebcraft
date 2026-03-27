@@ -49,12 +49,12 @@ public class BlockInteraction
             int pz = hitPos.Z + normal.Z;
 
             // Don't place inside player
-            float playerMinX = _camera.Position.X - GameConfig.PLAYER_RADIUS;
-            float playerMaxX = _camera.Position.X + GameConfig.PLAYER_RADIUS;
-            float playerMinY = _camera.Position.Y - 1f;
-            float playerMaxY = _camera.Position.Y + 0.8f;
-            float playerMinZ = _camera.Position.Z - GameConfig.PLAYER_RADIUS;
-            float playerMaxZ = _camera.Position.Z + GameConfig.PLAYER_RADIUS;
+            float playerMinX = _camera.PlayerPosition.X - GameConfig.PLAYER_RADIUS;
+            float playerMaxX = _camera.PlayerPosition.X + GameConfig.PLAYER_RADIUS;
+            float playerMinY = _camera.PlayerPosition.Y - 1f;
+            float playerMaxY = _camera.PlayerPosition.Y + 0.8f;
+            float playerMinZ = _camera.PlayerPosition.Z - GameConfig.PLAYER_RADIUS;
+            float playerMaxZ = _camera.PlayerPosition.Z + GameConfig.PLAYER_RADIUS;
 
             if (px < playerMaxX && px + 1 > playerMinX &&
                 py < playerMaxY && py + 1 > playerMinY &&

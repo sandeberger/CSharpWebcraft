@@ -41,6 +41,10 @@ public class WebcraftGame : GameWindow
     private float _auroraStrengthSmoothed;
 
     private bool _wireframe;
+    private bool _thirdPersonMode;
+    private PlayerModel _playerModel = null!;
+    private ThirdPersonCamera _thirdPersonCam = null!;
+    private Vector3 _prevPlayerPos;
     private float _lightUpdateTimer;
     private int _fps;
     private int _fpsFrameCount;
@@ -91,17 +95,21 @@ public class WebcraftGame : GameWindow
         _lavaFlow.Init();
 
         Console.WriteLine("Generating initial terrain...");
-        _world.Init(_camera.Position);
+        _world.Init(_camera.PlayerPosition);
 
         // Find safe spawn
-        var spawnPos = _world.FindSafeSpawn(_camera.Position);
+        var spawnPos = _world.FindSafeSpawn(_camera.PlayerPosition);
         _camera.Position = spawnPos;
+        _camera.PlayerPosition = spawnPos;
         Console.WriteLine($"Spawned at {spawnPos.X:F1}, {spawnPos.Y:F1}, {spawnPos.Z:F1}");
 
         _wind = new WindSystem(_world.Noise);
         _mobManager = new MobManager(_world);
         _critterManager = new CritterManager(_world);
         _player = new PlayerController(_camera, _input, _world, _hud, _waterFlow, _lavaFlow);
+        _playerModel = new PlayerModel();
+        _thirdPersonCam = new ThirdPersonCamera();
+        _prevPlayerPos = _camera.PlayerPosition;
 
         // Console
         _console = new GameConsole();
@@ -136,7 +144,7 @@ public class WebcraftGame : GameWindow
 
         Console.WriteLine("Game loaded. WASD to move, mouse to look, space to jump.");
         Console.WriteLine("Left click to break, right click to place. 1-9 or scroll to select block.");
-        Console.WriteLine("E for inventory. F3 for wireframe. F5 for debug. F4 to cycle weather. M to toggle music. ESC to quit.");
+        Console.WriteLine("E for inventory. F3 wireframe. F5 third-person. F7 debug. F4 weather. M music. ESC console.");
     }
 
     protected override void OnUpdateFrame(FrameEventArgs args)
@@ -196,11 +204,11 @@ public class WebcraftGame : GameWindow
                 _lightingEngine.UpdateGlobalSkyLight(_gameTime.GameHour, _weather.Gloom * 0.4f);
                 _lightUpdateTimer = 0;
             }
-            _world.Update(_camera.Position);
+            _world.Update(_camera.PlayerPosition);
             _waterFlow.Update(dt);
             _lavaFlow.Update(dt);
-            _mobManager.Update(dt, _camera.Position);
-            _critterManager.Update(dt, _camera.Position, _gameTime.GameHour, _weather.Precipitation);
+            _mobManager.Update(dt, _camera.PlayerPosition, _gameTime.GameHour);
+            _critterManager.Update(dt, _camera.PlayerPosition, _gameTime.GameHour, _weather.Precipitation);
             _music?.Update(dt);
             return;
         }
@@ -216,8 +224,12 @@ public class WebcraftGame : GameWindow
         if (_input.IsKeyPressed(Keys.F3))
             _wireframe = !_wireframe;
 
-        // F5 debug overlay toggle
+        // F5 toggle third-person camera
         if (_input.IsKeyPressed(Keys.F5))
+            _console.ThirdPersonMode = !_console.ThirdPersonMode;
+
+        // F7 debug overlay toggle
+        if (_input.IsKeyPressed(Keys.F7))
             _hud.ShowDebugOverlay = !_hud.ShowDebugOverlay;
 
         // M toggle music
@@ -267,7 +279,7 @@ public class WebcraftGame : GameWindow
                 _lightingEngine.UpdateGlobalSkyLight(_gameTime.GameHour, _weather.Gloom * 0.4f);
                 _lightUpdateTimer = 0;
             }
-            _world.Update(_camera.Position);
+            _world.Update(_camera.PlayerPosition);
             _waterFlow.Update(dt);
             _lavaFlow.Update(dt);
             return;
@@ -302,16 +314,37 @@ public class WebcraftGame : GameWindow
 
         _player.SpeedMultiplier = _console.SpeedMultiplier;
         _player.FlyMode = _console.FlyMode;
+        _thirdPersonMode = _console.ThirdPersonMode;
         _player.Update(dt);
-        _mobManager.Update(dt, _camera.Position);
-        _critterManager.Update(dt, _camera.Position, _gameTime.GameHour, _weather.Precipitation);
-        _world.Update(_camera.Position);
+
+        // Third-person camera sync
+        if (_thirdPersonMode)
+        {
+            float dx = _camera.PlayerPosition.X - _prevPlayerPos.X;
+            float dz = _camera.PlayerPosition.Z - _prevPlayerPos.Z;
+            float moveSpeed = dt > 0.0001f ? MathF.Sqrt(dx * dx + dz * dz) / dt : 0f;
+            _playerModel.Update(dt, moveSpeed);
+
+            Vector3 desiredCamPos = _thirdPersonCam.CalculateCameraPosition(
+                _camera.PlayerPosition, _camera.Yaw, _camera.Pitch);
+            _camera.Position = _thirdPersonCam.ClampToWalls(
+                _camera.PlayerPosition, desiredCamPos, _world);
+        }
+        else
+        {
+            _camera.Position = _camera.PlayerPosition;
+        }
+        _prevPlayerPos = _camera.PlayerPosition;
+
+        _mobManager.Update(dt, _camera.PlayerPosition, _gameTime.GameHour);
+        _critterManager.Update(dt, _camera.PlayerPosition, _gameTime.GameHour, _weather.Precipitation);
+        _world.Update(_camera.PlayerPosition);
         _waterFlow.Update(dt);
         _lavaFlow.Update(dt);
 
         // Aurora biome strength (only cold biomes)
         string biome = BiomeHelper.GetBiomeAt(_world.Noise,
-            (int)_camera.Position.X, (int)_camera.Position.Z);
+            (int)_camera.PlayerPosition.X, (int)_camera.PlayerPosition.Z);
         _auroraStrength = biome switch
         {
             "tundra" => 1.0f,
@@ -321,7 +354,7 @@ public class WebcraftGame : GameWindow
         _auroraStrengthSmoothed += (_auroraStrength - _auroraStrengthSmoothed) * MathF.Min(dt * 0.5f, 1f);
 
         // Audio
-        _sfx?.Update(dt, _camera.Position, _player.Physics, _input,
+        _sfx?.Update(dt, _camera.PlayerPosition, _player.Physics, _input,
             _gameTime.GameHour, _weather, _mobManager.Mobs);
         _music?.Update(dt);
     }
@@ -332,12 +365,23 @@ public class WebcraftGame : GameWindow
 
         if (_wireframe)
             GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Line);
-        _renderer.Render(_camera, _world, _gameTime, _weather, _lightingEngine.SkyMultiplier, _player.Physics.IsUnderwater, _mobManager, _critterManager, _wind, _auroraStrengthSmoothed);
+
+        // Build player mesh for third-person rendering
+        MobMeshData? playerMesh = null;
+        if (_thirdPersonMode)
+        {
+            float feetY = _camera.PlayerPosition.Y - GameConfig.PLAYER_HEIGHT * 0.5f;
+            var feetPos = new Vector3(_camera.PlayerPosition.X, feetY, _camera.PlayerPosition.Z);
+            var (skyBri, _) = (MathF.Max(_lightingEngine.SkyMultiplier, 0.05f), 0f);
+            playerMesh = _playerModel.BuildMesh(_camera.Yaw, feetPos, skyBri, 0f);
+        }
+
+        _renderer.Render(_camera, _world, _gameTime, _weather, _lightingEngine.SkyMultiplier, _player.Physics.IsUnderwater, _mobManager, _critterManager, _wind, _auroraStrengthSmoothed, playerMesh);
 
         float mouseX = _hud.IsInventoryOpen ? MouseState.X : 0;
         float mouseY = _hud.IsInventoryOpen ? MouseState.Y : 0;
         _hud.Render(_renderer.Atlas, _player.Physics,
-            _camera.Position, mouseX, mouseY, _fps, _world.LoadedChunkCount);
+            _camera.PlayerPosition, mouseX, mouseY, _fps, _world.LoadedChunkCount);
 
         if (_wireframe)
             GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Line);
@@ -348,7 +392,8 @@ public class WebcraftGame : GameWindow
         if (_gameTime.FrameCount % 60 == 0)
         {
             string weatherStr = _weather.CurrentWeather != WeatherType.Clear ? $" | Weather: {_weather.CurrentWeather}" : "";
-            Title = $"CSharpWebcraft | FPS: {_fps} | Chunks: {_world.LoadedChunkCount} | Pos: {_camera.Position.X:F1}, {_camera.Position.Y:F1}, {_camera.Position.Z:F1} | Hour: {_gameTime.GameHour:F1}{weatherStr}";
+            string camStr = _thirdPersonMode ? " | 3rd Person" : "";
+            Title = $"CSharpWebcraft | FPS: {_fps} | Chunks: {_world.LoadedChunkCount} | Pos: {_camera.PlayerPosition.X:F1}, {_camera.PlayerPosition.Y:F1}, {_camera.PlayerPosition.Z:F1} | Hour: {_gameTime.GameHour:F1}{weatherStr}{camStr}";
         }
     }
 

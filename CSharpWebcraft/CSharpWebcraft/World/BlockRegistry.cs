@@ -77,6 +77,13 @@ public static class BlockRegistry
         Register(58, "chiseled_stone",        tex: BlockTexture.All(0,7));
         Register(59, "bone_block",            tex: BlockTexture.All(1,7));
         Register(60, "cracked_stone_bricks",  tex: BlockTexture.All(2,7));
+
+        // Mushroom Caves (bioluminescent)
+        Register(61, "glow_mushroom_cyan",   color: 0x22DDCC, transparent: true, billboard: true, lightEmission: GameConfig.MUSHROOM_LIGHT_EMISSION, tex: BlockTexture.All(0,4));
+        Register(62, "glow_mushroom_purple", color: 0xBB44FF, transparent: true, billboard: true, lightEmission: GameConfig.MUSHROOM_LIGHT_EMISSION, tex: BlockTexture.All(1,4));
+        Register(63, "glow_mushroom_green",  color: 0x44FF66, transparent: true, billboard: true, lightEmission: GameConfig.MUSHROOM_LIGHT_EMISSION, tex: BlockTexture.All(2,4));
+        Register(64, "mycelium",             color: 0x8B7099, tex: BlockTexture.TopSideBottom(3,4, 4,4, 1,0));
+        Register(65, "spore_cloud",          color: 0x88EEDD, transparent: true, billboard: true, lightEmission: GameConfig.SPORE_LIGHT_EMISSION, tex: BlockTexture.All(5,4));
     }
 
     private static void Register(int id, string name,
@@ -106,5 +113,5 @@ public static class BlockRegistry
         return ref _blocks[id];
     }
 
-    public static bool IsPassable(int id) => id == 0 || id == 9 || id == 12 || id == 13 || id == 14 || id == 50;
+    public static bool IsPassable(int id) => id == 0 || id == 9 || id == 12 || id == 13 || id == 14 || id == 50 || id == 65;
 }

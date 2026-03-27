@@ -146,6 +146,7 @@ public class GameConsole
             case "kill" or "k": CmdKill(); break;
             case "speed": CmdSpeed(args); break;
             case "fly" or "f": CmdFly(); break;
+            case "camera" or "cam": CmdCamera(); break;
             case "clear" or "cls": _outputLines.Clear(); break;
             default: PrintErr($"UNKNOWN: {cmd.ToUpper()} - TYPE HELP"); break;
         }
@@ -164,6 +165,7 @@ public class GameConsole
         PrintInfo("  KILL (K)  REMOVE ALL MOBS");
         PrintInfo("  SPEED  0.5/1/2/5");
         PrintInfo("  FLY (F)  TOGGLE FLIGHT");
+        PrintInfo("  CAMERA (CAM)  TOGGLE 3RD PERSON");
         PrintInfo("  CLEAR (CLS)");
     }
 
@@ -240,15 +242,16 @@ public class GameConsole
             return;
         }
 
-        if (!TryParseCoord(args[0], _camera.Position.X, out float x) ||
-            !TryParseCoord(args[1], _camera.Position.Y, out float y) ||
-            !TryParseCoord(args[2], _camera.Position.Z, out float z))
+        if (!TryParseCoord(args[0], _camera.PlayerPosition.X, out float x) ||
+            !TryParseCoord(args[1], _camera.PlayerPosition.Y, out float y) ||
+            !TryParseCoord(args[2], _camera.PlayerPosition.Z, out float z))
         {
             PrintErr("INVALID COORDINATES");
             return;
         }
 
-        _camera.Position = new Vector3(x, y, z);
+        _camera.PlayerPosition = new Vector3(x, y, z);
+        _camera.Position = _camera.PlayerPosition;
         PrintOk($"TELEPORTED TO {x:F1} {y:F1} {z:F1}");
     }
 
@@ -266,7 +269,7 @@ public class GameConsole
 
     private void CmdPos()
     {
-        var p = _camera.Position;
+        var p = _camera.PlayerPosition;
         PrintInfo($"POS: {p.X:F1} {p.Y:F1} {p.Z:F1}");
 
         int ix = (int)MathF.Floor(p.X);
@@ -328,7 +331,7 @@ public class GameConsole
     {
         if (args.Length == 0)
         {
-            PrintInfo("TYPES: SHARK, DOLPHIN, FISH, FIREFLY, BUTTERFLY");
+            PrintInfo("TYPES: ZOMBIE, SHARK, DOLPHIN, FISH, FIREFLY, BUTTERFLY");
             PrintErr("USE: SPAWN TYPE (COUNT)");
             return;
         }
@@ -338,12 +341,16 @@ public class GameConsole
             count = Math.Clamp(c, 1, 20);
 
         string type = args[0].ToLowerInvariant();
-        var pos = _camera.Position;
+        var pos = _camera.PlayerPosition;
         // Spawn 10 blocks ahead of where the player is looking
         float spawnX = pos.X + _camera.Front.X * 10f;
         float spawnZ = pos.Z + _camera.Front.Z * 10f;
 
-        int spawned = _critterManager.SpawnCommand(type, spawnX, spawnZ, count);
+        // Try mob types first, then critters
+        int spawned = _mobManager.SpawnCommand(type, spawnX, spawnZ, count);
+        if (spawned == 0)
+            spawned = _critterManager.SpawnCommand(type, spawnX, spawnZ, count);
+
         if (spawned > 0)
             PrintOk($"SPAWNED {spawned} {type.ToUpper()}");
         else
@@ -385,6 +392,18 @@ public class GameConsole
             PrintOk("FLY MODE ON - SPACE TO GO UP, SHIFT TO GO DOWN");
         else
             PrintOk("FLY MODE OFF");
+    }
+
+    private bool _thirdPersonMode;
+    public bool ThirdPersonMode { get => _thirdPersonMode; set => _thirdPersonMode = value; }
+
+    private void CmdCamera()
+    {
+        _thirdPersonMode = !_thirdPersonMode;
+        if (_thirdPersonMode)
+            PrintOk("THIRD-PERSON CAMERA ON");
+        else
+            PrintOk("FIRST-PERSON CAMERA ON");
     }
 }
 

@@ -88,6 +88,26 @@ public class TerrainGenerator
         if (GameConfig.USE_FBM_CAVES)
             CarveFbmCaves(chunk, surfaceHeights);
 
+        // Phase 2c: Worm caves (connected tunnel network)
+        if (GameConfig.WORM_ENABLED)
+            CarveWormCaves(chunk, surfaceHeights);
+
+        // Phase 2d: Surface cave entrances (hillside + sinkholes)
+        if (GameConfig.SURFACE_ENTRANCES_ENABLED)
+            GenerateSurfaceEntrances(chunk, surfaceHeights);
+
+        // Phase 2e: Vertical shafts connecting shallow ↔ deep caves
+        if (GameConfig.VERTICAL_SHAFTS_ENABLED)
+            CarveVerticalShafts(chunk, surfaceHeights);
+
+        // Phase 2f: Widen intersections into chambers
+        if (GameConfig.CAVE_WIDENING_ENABLED)
+            WidenCaveIntersections(chunk, surfaceHeights);
+
+        // Phase 2g: Stalactites & stalagmites in deep caves
+        if (GameConfig.STALACTITES_ENABLED)
+            GenerateStalactites(chunk, surfaceHeights);
+
         // Phase 3: Lava pools
         if (GameConfig.LAVA_ENABLED)
         {
@@ -217,6 +237,532 @@ public class TerrainGenerator
                         else
                             chunk.SetBlock(x, y, z, 0);
                     }
+                }
+            }
+        }
+    }
+
+    // Set of block types that worm/shaft carving is allowed to remove
+    private static readonly HashSet<byte> CarvableBlocks = new()
+    {
+        1, 2, 3, 5, 7, 17, 19, 20, 21, 22, 23, 28, 29, 55, 64
+        // grass, dirt, stone, sand, coal, sandstone, snow_grass, dry_grass, dark_grass, mud, mossy_stone, gravel, clay, crystal_stone, mycelium
+    };
+
+    private void CarveSphericalVolume(Chunk chunk, float centerX, float centerY, float centerZ, float radius)
+    {
+        int chunkWorldX = chunk.X * GameConfig.CHUNK_SIZE;
+        int chunkWorldZ = chunk.Z * GameConfig.CHUNK_SIZE;
+
+        int minX = Math.Max(0, (int)Math.Floor(centerX - radius) - chunkWorldX);
+        int maxX = Math.Min(GameConfig.CHUNK_SIZE - 1, (int)Math.Ceiling(centerX + radius) - chunkWorldX);
+        int minY = Math.Max(1, (int)Math.Floor(centerY - radius)); // never carve bedrock at y=0
+        int maxY = Math.Min(GameConfig.WORLD_HEIGHT - 1, (int)Math.Ceiling(centerY + radius));
+        int minZ = Math.Max(0, (int)Math.Floor(centerZ - radius) - chunkWorldZ);
+        int maxZ = Math.Min(GameConfig.CHUNK_SIZE - 1, (int)Math.Ceiling(centerZ + radius) - chunkWorldZ);
+
+        float r2 = radius * radius;
+
+        for (int lx = minX; lx <= maxX; lx++)
+        for (int ly = minY; ly <= maxY; ly++)
+        for (int lz = minZ; lz <= maxZ; lz++)
+        {
+            float dx = (chunkWorldX + lx) - centerX;
+            float dy = ly - centerY;
+            float dz = (chunkWorldZ + lz) - centerZ;
+            if (dx * dx + dy * dy + dz * dz <= r2)
+            {
+                byte blk = chunk.GetBlock(lx, ly, lz);
+                if (CarvableBlocks.Contains(blk))
+                    chunk.SetBlock(lx, ly, lz, 0);
+            }
+        }
+    }
+
+    private void CarveWormCaves(Chunk chunk, (int y, string biome)[,] surfaceHeights)
+    {
+        int chunkWorldX = chunk.X * GameConfig.CHUNK_SIZE;
+        int chunkWorldZ = chunk.Z * GameConfig.CHUNK_SIZE;
+        int searchRadius = GameConfig.WORM_SEARCH_RADIUS;
+
+        // Max distance a worm can travel from its origin
+        float maxWormTravel = GameConfig.WORM_MAX_LENGTH * GameConfig.WORM_STEP_SIZE + GameConfig.WORM_RADIUS * 2;
+        // How far from chunk center before we can skip this worm
+        float chunkHalf = GameConfig.CHUNK_SIZE * 0.5f;
+        float skipDistance = maxWormTravel + chunkHalf + GameConfig.CHUNK_SIZE * searchRadius;
+
+        for (int ncx = chunk.X - searchRadius; ncx <= chunk.X + searchRadius; ncx++)
+        for (int ncz = chunk.Z - searchRadius; ncz <= chunk.Z + searchRadius; ncz++)
+        {
+            for (int w = 0; w < GameConfig.WORMS_PER_CHUNK; w++)
+            {
+                int wormSeed = HashCode.Combine(ncx, ncz, _worldSeed, w);
+
+                // Deterministic spawn check using the seed bits
+                float spawnRoll = ((wormSeed & 0xFFFF) / 65535.0f);
+                if (spawnRoll > GameConfig.WORM_START_CHANCE)
+                    continue;
+
+                // Deterministic start position within origin chunk
+                int seedA = HashCode.Combine(wormSeed, 1);
+                int seedB = HashCode.Combine(wormSeed, 2);
+                int seedC = HashCode.Combine(wormSeed, 3);
+
+                float startX = ncx * GameConfig.CHUNK_SIZE + (Math.Abs(seedA) % GameConfig.CHUNK_SIZE);
+                float startZ = ncz * GameConfig.CHUNK_SIZE + (Math.Abs(seedB) % GameConfig.CHUNK_SIZE);
+                float startY = GameConfig.WORM_Y_MIN + (Math.Abs(seedC) % (GameConfig.WORM_Y_MAX - GameConfig.WORM_Y_MIN));
+
+                // Initial direction from noise at start position
+                float dirX = (float)_noise.Noise3D(startX / 10.0 + GameConfig.WORM_NOISE_OFFSET, startY / 10.0, startZ / 10.0);
+                float dirY = -0.3f; // start heading somewhat downward
+                float dirZ = (float)_noise.Noise3D(startX / 10.0, startY / 10.0, startZ / 10.0 + GameConfig.WORM_NOISE_OFFSET);
+
+                // Normalize direction
+                float len = MathF.Sqrt(dirX * dirX + dirY * dirY + dirZ * dirZ);
+                if (len > 0.001f) { dirX /= len; dirY /= len; dirZ /= len; }
+                else { dirX = 1; dirY = 0; dirZ = 0; }
+
+                float posX = startX, posY = startY, posZ = startZ;
+
+                for (int step = 0; step < GameConfig.WORM_MAX_LENGTH; step++)
+                {
+                    // Early exit: too far from current chunk to ever reach it
+                    float dxChunk = posX - (chunkWorldX + chunkHalf);
+                    float dzChunk = posZ - (chunkWorldZ + chunkHalf);
+                    float remainingSteps = (GameConfig.WORM_MAX_LENGTH - step) * GameConfig.WORM_STEP_SIZE;
+                    float distToChunk = MathF.Sqrt(dxChunk * dxChunk + dzChunk * dzChunk) - chunkHalf * 1.42f;
+                    if (distToChunk > remainingSteps + GameConfig.WORM_RADIUS * 2)
+                        break;
+
+                    // Radius variation using noise
+                    float radiusNoise = (float)_noise.Noise3D(
+                        posX / 8.0 + GameConfig.WORM_NOISE_OFFSET + 3000,
+                        posY / 8.0,
+                        posZ / 8.0);
+                    float currentRadius = GameConfig.WORM_RADIUS * (1.0f + radiusNoise * GameConfig.WORM_RADIUS_VARIATION);
+                    currentRadius = Math.Max(0.8f, currentRadius);
+
+                    // Carve sphere at current position (only if it might intersect this chunk)
+                    if (posX + currentRadius >= chunkWorldX && posX - currentRadius < chunkWorldX + GameConfig.CHUNK_SIZE &&
+                        posZ + currentRadius >= chunkWorldZ && posZ - currentRadius < chunkWorldZ + GameConfig.CHUNK_SIZE &&
+                        posY >= 1 && posY < GameConfig.WORLD_HEIGHT)
+                    {
+                        CarveSphericalVolume(chunk, posX, posY, posZ, currentRadius);
+                    }
+
+                    // Noise-based steering
+                    float turnScale = GameConfig.WORM_TURN_NOISE_SCALE;
+                    float nx = (float)_noise.Noise3D(posX / turnScale + GameConfig.WORM_NOISE_OFFSET, posY / turnScale + 3000, posZ / turnScale);
+                    float ny = (float)_noise.Noise3D(posX / turnScale, posY / turnScale + GameConfig.WORM_NOISE_OFFSET + 6000, posZ / turnScale);
+                    float nz = (float)_noise.Noise3D(posX / turnScale + 3000, posY / turnScale, posZ / turnScale + GameConfig.WORM_NOISE_OFFSET + 9000);
+
+                    dirX += nx * GameConfig.WORM_TURN_STRENGTH;
+                    dirY += ny * GameConfig.WORM_TURN_STRENGTH - GameConfig.WORM_DOWNWARD_BIAS;
+                    dirZ += nz * GameConfig.WORM_TURN_STRENGTH;
+
+                    // Normalize
+                    len = MathF.Sqrt(dirX * dirX + dirY * dirY + dirZ * dirZ);
+                    if (len > 0.001f) { dirX /= len; dirY /= len; dirZ /= len; }
+
+                    // Clamp Y direction to stay in bounds
+                    if (posY <= GameConfig.WORM_Y_MIN + 2 && dirY < 0) dirY *= 0.1f;
+                    if (posY >= GameConfig.WORM_Y_MAX - 2 && dirY > 0) dirY *= 0.1f;
+
+                    // Advance
+                    posX += dirX * GameConfig.WORM_STEP_SIZE;
+                    posY += dirY * GameConfig.WORM_STEP_SIZE;
+                    posZ += dirZ * GameConfig.WORM_STEP_SIZE;
+
+                    posY = Math.Clamp(posY, GameConfig.WORM_Y_MIN, GameConfig.WORM_Y_MAX);
+                }
+            }
+        }
+    }
+
+    private void GenerateSurfaceEntrances(Chunk chunk, (int y, string biome)[,] surfaceHeights)
+    {
+        int chunkWorldX = chunk.X * GameConfig.CHUNK_SIZE;
+        int chunkWorldZ = chunk.Z * GameConfig.CHUNK_SIZE;
+
+        for (int x = 1; x < GameConfig.CHUNK_SIZE - 1; x++)
+        for (int z = 1; z < GameConfig.CHUNK_SIZE - 1; z++)
+        {
+            int surfaceY = surfaceHeights[x, z].y;
+            if (surfaceY <= GameConfig.WATER_LEVEL + 3) continue; // skip near water
+
+            int wx = chunkWorldX + x;
+            int wz = chunkWorldZ + z;
+
+            // --- A: Hillside entrances ---
+            // Check slope: compare to neighbors
+            int heightN = (z > 0) ? surfaceHeights[x, z - 1].y : surfaceY;
+            int heightS = (z < GameConfig.CHUNK_SIZE - 1) ? surfaceHeights[x, z + 1].y : surfaceY;
+            int heightW = (x > 0) ? surfaceHeights[x - 1, z].y : surfaceY;
+            int heightE = (x < GameConfig.CHUNK_SIZE - 1) ? surfaceHeights[x + 1, z].y : surfaceY;
+
+            int slopeDx = heightE - heightW;
+            int slopeDz = heightS - heightN;
+            int maxSlope = Math.Max(Math.Abs(slopeDx), Math.Abs(slopeDz));
+
+            if (maxSlope >= 3)
+            {
+                double entranceNoise = _noise.Noise2D(
+                    wx / (double)GameConfig.HILLSIDE_ENTRANCE_NOISE_SCALE + GameConfig.HILLSIDE_ENTRANCE_NOISE_OFFSET,
+                    wz / (double)GameConfig.HILLSIDE_ENTRANCE_NOISE_SCALE + GameConfig.HILLSIDE_ENTRANCE_NOISE_OFFSET);
+
+                if (entranceNoise > GameConfig.HILLSIDE_ENTRANCE_THRESHOLD)
+                {
+                    // Determine carve direction (into the hill = toward higher ground)
+                    int carveDirX = slopeDx > 0 ? 1 : (slopeDx < 0 ? -1 : 0);
+                    int carveDirZ = slopeDz > 0 ? 1 : (slopeDz < 0 ? -1 : 0);
+                    if (carveDirX == 0 && carveDirZ == 0) carveDirX = 1;
+
+                    // Carve entrance tunnel: 3 wide, 3 tall, going into hillside and slightly down
+                    for (int depth = 0; depth < GameConfig.HILLSIDE_ENTRANCE_DEPTH; depth++)
+                    {
+                        int carveY = surfaceY - (depth / 3); // descend 1 block every 3 horizontal
+                        int carveX = wx + carveDirX * depth;
+                        int carveZ = wz + carveDirZ * depth;
+
+                        // Carve a 3x3 cross pattern at this position
+                        for (int dy = 0; dy < 3; dy++)
+                        for (int dw = -1; dw <= 1; dw++)
+                        {
+                            int bx, bz;
+                            if (Math.Abs(carveDirX) >= Math.Abs(carveDirZ))
+                            {
+                                bx = carveX;
+                                bz = carveZ + dw;
+                            }
+                            else
+                            {
+                                bx = carveX + dw;
+                                bz = carveZ;
+                            }
+
+                            int localX = bx - chunkWorldX;
+                            int localZ = bz - chunkWorldZ;
+                            int ly = carveY + dy;
+
+                            if (localX >= 0 && localX < GameConfig.CHUNK_SIZE &&
+                                localZ >= 0 && localZ < GameConfig.CHUNK_SIZE &&
+                                ly > 0 && ly < GameConfig.WORLD_HEIGHT)
+                            {
+                                byte blk = chunk.GetBlock(localX, ly, localZ);
+                                if (CarvableBlocks.Contains(blk))
+                                    chunk.SetBlock(localX, ly, localZ, 0);
+                            }
+                        }
+                    }
+
+                    // Launch a short connector worm from the back of the entrance heading down
+                    float connX = wx + carveDirX * GameConfig.HILLSIDE_ENTRANCE_DEPTH;
+                    float connY = surfaceY - (GameConfig.HILLSIDE_ENTRANCE_DEPTH / 3);
+                    float connZ = wz + carveDirZ * GameConfig.HILLSIDE_ENTRANCE_DEPTH;
+                    CarveConnectorWorm(chunk, connX, connY, connZ, 30, 0.25f);
+                }
+            }
+
+            // --- B: Sinkholes ---
+            double sinkholeNoise = _noise.Noise2D(
+                wx / (double)GameConfig.SINKHOLE_NOISE_SCALE + GameConfig.SINKHOLE_NOISE_OFFSET,
+                wz / (double)GameConfig.SINKHOLE_NOISE_SCALE + GameConfig.SINKHOLE_NOISE_OFFSET);
+
+            if (sinkholeNoise > GameConfig.SINKHOLE_THRESHOLD)
+            {
+                // Determine depth from noise
+                double depthNoise = (_noise.Noise2D(wx / 20.0 + 19500, wz / 20.0 + 19500) + 1) / 2;
+                int sinkDepth = GameConfig.SINKHOLE_MIN_DEPTH +
+                    (int)(depthNoise * (GameConfig.SINKHOLE_MAX_DEPTH - GameConfig.SINKHOLE_MIN_DEPTH));
+
+                // Carve tapered shaft downward
+                for (int dy = 0; dy < sinkDepth; dy++)
+                {
+                    int y = surfaceY - dy;
+                    if (y <= 1) break;
+
+                    // Taper: wider at top, narrower at bottom
+                    float progress = dy / (float)sinkDepth;
+                    float radius = GameConfig.SINKHOLE_RADIUS * (1.0f - progress * 0.4f);
+
+                    int ir = (int)Math.Ceiling(radius);
+                    for (int dx = -ir; dx <= ir; dx++)
+                    for (int dz = -ir; dz <= ir; dz++)
+                    {
+                        if (dx * dx + dz * dz <= radius * radius)
+                        {
+                            int localX = x + dx;
+                            int localZ = z + dz;
+                            if (localX >= 0 && localX < GameConfig.CHUNK_SIZE &&
+                                localZ >= 0 && localZ < GameConfig.CHUNK_SIZE &&
+                                y > 0 && y < GameConfig.WORLD_HEIGHT)
+                            {
+                                byte blk = chunk.GetBlock(localX, y, localZ);
+                                if (CarvableBlocks.Contains(blk))
+                                    chunk.SetBlock(localX, y, localZ, 0);
+                            }
+                        }
+                    }
+                }
+
+                // Launch short connector worm from bottom of sinkhole
+                float bottomY = surfaceY - sinkDepth;
+                if (bottomY > 2)
+                    CarveConnectorWorm(chunk, wx, bottomY, wz, 15, 0.35f);
+            }
+        }
+    }
+
+    private void CarveConnectorWorm(Chunk chunk, float startX, float startY, float startZ, int length, float downwardBias)
+    {
+        float posX = startX, posY = startY, posZ = startZ;
+        float dirX = (float)_noise.Noise3D(startX / 10.0 + GameConfig.WORM_NOISE_OFFSET + 500, startY / 10.0, startZ / 10.0);
+        float dirY = -0.5f;
+        float dirZ = (float)_noise.Noise3D(startX / 10.0, startY / 10.0, startZ / 10.0 + GameConfig.WORM_NOISE_OFFSET + 500);
+
+        float len = MathF.Sqrt(dirX * dirX + dirY * dirY + dirZ * dirZ);
+        if (len > 0.001f) { dirX /= len; dirY /= len; dirZ /= len; }
+        else { dirX = 0; dirY = -1; dirZ = 0; }
+
+        int chunkWorldX = chunk.X * GameConfig.CHUNK_SIZE;
+        int chunkWorldZ = chunk.Z * GameConfig.CHUNK_SIZE;
+
+        for (int step = 0; step < length; step++)
+        {
+            float radius = GameConfig.WORM_RADIUS * 0.9f;
+
+            if (posX + radius >= chunkWorldX && posX - radius < chunkWorldX + GameConfig.CHUNK_SIZE &&
+                posZ + radius >= chunkWorldZ && posZ - radius < chunkWorldZ + GameConfig.CHUNK_SIZE &&
+                posY >= 1 && posY < GameConfig.WORLD_HEIGHT)
+            {
+                CarveSphericalVolume(chunk, posX, posY, posZ, radius);
+            }
+
+            // Noise steering with strong downward bias
+            float turnScale = GameConfig.WORM_TURN_NOISE_SCALE;
+            float nx = (float)_noise.Noise3D(posX / turnScale + GameConfig.WORM_NOISE_OFFSET + 500, posY / turnScale + 3000, posZ / turnScale);
+            float nz = (float)_noise.Noise3D(posX / turnScale + 3500, posY / turnScale, posZ / turnScale + GameConfig.WORM_NOISE_OFFSET + 9500);
+
+            dirX += nx * GameConfig.WORM_TURN_STRENGTH * 0.8f;
+            dirY -= downwardBias;
+            dirZ += nz * GameConfig.WORM_TURN_STRENGTH * 0.8f;
+
+            len = MathF.Sqrt(dirX * dirX + dirY * dirY + dirZ * dirZ);
+            if (len > 0.001f) { dirX /= len; dirY /= len; dirZ /= len; }
+
+            posX += dirX * GameConfig.WORM_STEP_SIZE;
+            posY += dirY * GameConfig.WORM_STEP_SIZE;
+            posZ += dirZ * GameConfig.WORM_STEP_SIZE;
+
+            if (posY <= 2) break;
+        }
+    }
+
+    private void CarveVerticalShafts(Chunk chunk, (int y, string biome)[,] surfaceHeights)
+    {
+        int chunkWorldX = chunk.X * GameConfig.CHUNK_SIZE;
+        int chunkWorldZ = chunk.Z * GameConfig.CHUNK_SIZE;
+
+        for (int x = 0; x < GameConfig.CHUNK_SIZE; x++)
+        for (int z = 0; z < GameConfig.CHUNK_SIZE; z++)
+        {
+            int wx = chunkWorldX + x;
+            int wz = chunkWorldZ + z;
+
+            double shaftNoise = _noise.Noise2D(
+                wx / (double)GameConfig.SHAFT_NOISE_SCALE + GameConfig.SHAFT_NOISE_OFFSET,
+                wz / (double)GameConfig.SHAFT_NOISE_SCALE + GameConfig.SHAFT_NOISE_OFFSET);
+
+            if (shaftNoise < GameConfig.SHAFT_THRESHOLD) continue;
+
+            int surfaceY = surfaceHeights[x, z].y;
+            int topY = Math.Min(surfaceY - 5, GameConfig.WORM_Y_MAX);
+            int bottomY = Math.Max(GameConfig.CAVE_FBM_Y_MIN + 3, 5);
+
+            if (topY <= bottomY + 5) continue;
+
+            // Carve a vertical shaft with slight horizontal drift
+            float driftX = 0, driftZ = 0;
+
+            for (int y = topY; y >= bottomY; y--)
+            {
+                // Horizontal drift using noise
+                if (y % 5 == 0)
+                {
+                    driftX += (float)_noise.Noise3D(wx / 15.0 + GameConfig.SHAFT_NOISE_OFFSET, y / 15.0, wz / 15.0) * GameConfig.SHAFT_DRIFT;
+                    driftZ += (float)_noise.Noise3D(wx / 15.0, y / 15.0, wz / 15.0 + GameConfig.SHAFT_NOISE_OFFSET) * GameConfig.SHAFT_DRIFT;
+                }
+
+                float shaftRadius = GameConfig.SHAFT_RADIUS;
+
+                // Widen where shaft meets existing cave air
+                bool adjacentCave = false;
+                for (int dx = -2; dx <= 2 && !adjacentCave; dx++)
+                for (int dz = -2; dz <= 2 && !adjacentCave; dz++)
+                {
+                    if (dx == 0 && dz == 0) continue;
+                    int checkX = x + (int)Math.Round(driftX) + dx;
+                    int checkZ = z + (int)Math.Round(driftZ) + dz;
+                    if (checkX >= 0 && checkX < GameConfig.CHUNK_SIZE &&
+                        checkZ >= 0 && checkZ < GameConfig.CHUNK_SIZE &&
+                        chunk.GetBlock(checkX, y, checkZ) == 0)
+                    {
+                        adjacentCave = true;
+                    }
+                }
+
+                if (adjacentCave)
+                    shaftRadius *= 1.8f;
+
+                // Carve circular cross-section
+                int ir = (int)Math.Ceiling(shaftRadius);
+                for (int dx = -ir; dx <= ir; dx++)
+                for (int dz = -ir; dz <= ir; dz++)
+                {
+                    if (dx * dx + dz * dz <= shaftRadius * shaftRadius)
+                    {
+                        int lx = x + dx + (int)Math.Round(driftX);
+                        int lz = z + dz + (int)Math.Round(driftZ);
+                        if (lx >= 0 && lx < GameConfig.CHUNK_SIZE &&
+                            lz >= 0 && lz < GameConfig.CHUNK_SIZE &&
+                            y > 0 && y < GameConfig.WORLD_HEIGHT)
+                        {
+                            byte blk = chunk.GetBlock(lx, y, lz);
+                            if (CarvableBlocks.Contains(blk))
+                                chunk.SetBlock(lx, y, lz, 0);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private void WidenCaveIntersections(Chunk chunk, (int y, string biome)[,] surfaceHeights)
+    {
+        int chunkWorldX = chunk.X * GameConfig.CHUNK_SIZE;
+        int chunkWorldZ = chunk.Z * GameConfig.CHUNK_SIZE;
+
+        // Collect intersection points first, then carve (to avoid cascading)
+        var intersections = new List<(int x, int y, int z)>();
+
+        for (int x = 1; x < GameConfig.CHUNK_SIZE - 1; x++)
+        for (int z = 1; z < GameConfig.CHUNK_SIZE - 1; z++)
+        {
+            int surfaceY = surfaceHeights[x, z].y;
+            for (int y = GameConfig.WORM_Y_MIN; y < surfaceY - 3; y++)
+            {
+                if (chunk.GetBlock(x, y, z) != 0) continue; // must be air
+
+                // Count air neighbors in cardinal directions
+                bool xNeg = chunk.GetBlock(x - 1, y, z) == 0;
+                bool xPos = chunk.GetBlock(x + 1, y, z) == 0;
+                bool yNeg = (y > 0) && chunk.GetBlock(x, y - 1, z) == 0;
+                bool yPos = (y < GameConfig.WORLD_HEIGHT - 1) && chunk.GetBlock(x, y + 1, z) == 0;
+                bool zNeg = chunk.GetBlock(x, y, z - 1) == 0;
+                bool zPos = chunk.GetBlock(x, y, z + 1) == 0;
+
+                int airCount = (xNeg ? 1 : 0) + (xPos ? 1 : 0) + (yNeg ? 1 : 0) +
+                               (yPos ? 1 : 0) + (zNeg ? 1 : 0) + (zPos ? 1 : 0);
+
+                // Need 4+ air neighbors AND at least 2 different axis pairs with air
+                if (airCount < 4) continue;
+
+                int axisPairs = 0;
+                if (xNeg || xPos) axisPairs++;
+                if (yNeg || yPos) axisPairs++;
+                if (zNeg || zPos) axisPairs++;
+
+                if (axisPairs >= 2)
+                    intersections.Add((x, y, z));
+            }
+        }
+
+        // Carve chambers at intersection points
+        foreach (var (ix, iy, iz) in intersections)
+        {
+            int wx = chunkWorldX + ix;
+            int wz = chunkWorldZ + iz;
+
+            // Noise mask for organic shape
+            double chamberNoise = _noise.Noise3D(
+                wx / 5.0 + GameConfig.CHAMBER_NOISE_OFFSET,
+                iy / 5.0,
+                wz / 5.0 + GameConfig.CHAMBER_NOISE_OFFSET);
+
+            if (chamberNoise < 0.3) continue;
+
+            CarveSphericalVolume(chunk, wx, iy, wz, GameConfig.CHAMBER_RADIUS);
+        }
+    }
+
+    private void GenerateStalactites(Chunk chunk, (int y, string biome)[,] surfaceHeights)
+    {
+        const byte DRIPSTONE = 66;
+        int chunkWorldX = chunk.X * GameConfig.CHUNK_SIZE;
+        int chunkWorldZ = chunk.Z * GameConfig.CHUNK_SIZE;
+
+        for (int x = 0; x < GameConfig.CHUNK_SIZE; x++)
+        for (int z = 0; z < GameConfig.CHUNK_SIZE; z++)
+        {
+            int wx = chunkWorldX + x;
+            int wz = chunkWorldZ + z;
+            int surfaceY = surfaceHeights[x, z].y;
+            int maxY = Math.Min(surfaceY - 3, GameConfig.STALACTITE_Y_MAX);
+
+            for (int y = GameConfig.WORM_Y_MIN + 1; y <= maxY; y++)
+            {
+                // Look for ceiling: solid block with air below
+                byte blockAbove = chunk.GetBlock(x, y, z);
+                if (blockAbove == 0 || blockAbove == 9 || blockAbove == 15) continue;
+                if (chunk.GetBlock(x, y - 1, z) != 0) continue;
+
+                // Noise gate: should a stalactite form here?
+                double noise = _noise.Noise3D(
+                    wx / (double)GameConfig.STALACTITE_NOISE_SCALE + GameConfig.STALACTITE_NOISE_OFFSET,
+                    y / (double)GameConfig.STALACTITE_NOISE_SCALE,
+                    wz / (double)GameConfig.STALACTITE_NOISE_SCALE + GameConfig.STALACTITE_NOISE_OFFSET);
+
+                if (noise < GameConfig.STALACTITE_THRESHOLD) continue;
+
+                // Determine stalactite length from noise (1-MAX_LENGTH)
+                double lenNoise = (_noise.Noise2D(wx / 4.0 + 25500, wz / 4.0 + 25500) + 1) / 2;
+                int stalLen = 1 + (int)(lenNoise * (GameConfig.STALACTITE_MAX_LENGTH - 1));
+
+                // Grow stalactite downward
+                for (int dy = 1; dy <= stalLen; dy++)
+                {
+                    int sy = y - dy;
+                    if (sy <= 1) break;
+                    if (chunk.GetBlock(x, sy, z) != 0) break; // hit something solid
+                    chunk.SetBlock(x, sy, z, DRIPSTONE);
+                }
+
+                // Stalagmite: find the floor below and grow upward
+                double stalagNoise = (_noise.Noise2D(wx / 5.0 + 25800, wz / 5.0 + 25800) + 1) / 2;
+                if (stalagNoise < GameConfig.STALAGMITE_CHANCE) continue;
+
+                // Scan down to find floor
+                int floorY = -1;
+                for (int fy = y - stalLen - 1; fy >= 1; fy--)
+                {
+                    byte floorBlock = chunk.GetBlock(x, fy, z);
+                    if (floorBlock != 0 && floorBlock != DRIPSTONE)
+                    {
+                        floorY = fy;
+                        break;
+                    }
+                }
+
+                if (floorY < 1) continue;
+
+                // Stalagmite length: shorter than stalactite, at least 1
+                int stalagLen = Math.Max(1, stalLen - 1);
+                for (int dy = 1; dy <= stalagLen; dy++)
+                {
+                    int sy = floorY + dy;
+                    if (sy >= y - stalLen) break; // don't merge with stalactite
+                    if (chunk.GetBlock(x, sy, z) != 0) break;
+                    chunk.SetBlock(x, sy, z, DRIPSTONE);
                 }
             }
         }

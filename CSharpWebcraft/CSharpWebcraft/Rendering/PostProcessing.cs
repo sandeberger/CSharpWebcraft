@@ -212,7 +212,7 @@ public class PostProcessing : IDisposable
     }
 
     /// <summary>Run SSAO + Bloom + composite, outputting final image to the default framebuffer.</summary>
-    public void Apply(Camera camera)
+    public void Apply(Camera camera, bool isUnderwater = false, float time = 0f)
     {
         GL.BindVertexArray(_quadVao);
         GL.Disable(EnableCap.DepthTest);
@@ -297,6 +297,8 @@ public class PostProcessing : IDisposable
         _compositeShader.SetInt("uBloomTex", 2);
         _compositeShader.SetFloat("uBloomIntensity", GameConfig.BLOOM_INTENSITY);
         _compositeShader.SetFloat("uSSAOStrength", GameConfig.SSAO_STRENGTH);
+        _compositeShader.SetInt("uUnderwater", isUnderwater ? 1 : 0);
+        _compositeShader.SetFloat("uTime", time);
 
         GL.ActiveTexture(TextureUnit.Texture0);
         GL.BindTexture(TextureTarget.Texture2D, _sceneColorTex);

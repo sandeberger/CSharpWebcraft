@@ -241,5 +241,6 @@ public class CubeSlime : MobBase
         verts[idx++] = skyBri;
         verts[idx++] = blockBri;
         verts[idx++] = 1.0f; // AO (no occlusion for mobs)
+        verts[idx++] = 1.0f; // Opacity
     }
 }

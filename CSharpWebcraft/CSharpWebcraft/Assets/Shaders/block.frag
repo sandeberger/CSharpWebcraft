@@ -8,6 +8,7 @@ in vec3 vWorldPos;
 in float vSkyBri;
 in float vBlockBri;
 in float vAO;
+in float vOpacity;
 
 out vec4 FragColor;
 
@@ -138,5 +139,5 @@ void main()
     vec3 finalFogColor = mix(uFogColorBottom, uFogColor, colorBlend);
     color = mix(finalFogColor, color, fogFactor);
 
-    FragColor = vec4(color, texColor.a);
+    FragColor = vec4(color, texColor.a * vOpacity);
 }

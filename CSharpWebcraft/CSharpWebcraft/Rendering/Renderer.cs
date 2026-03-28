@@ -235,8 +235,8 @@ public class Renderer
         // Falling leaves
         _leafRenderer.Render(camera);
 
-        // Apply SSAO + Bloom post-processing → output to screen
-        _postProcessing.Apply(camera);
+        // Apply SSAO + Bloom + underwater distortion post-processing → output to screen
+        _postProcessing.Apply(camera, isUnderwater, (float)_timer.Elapsed.TotalSeconds);
     }
 
     public void Resize(int width, int height)

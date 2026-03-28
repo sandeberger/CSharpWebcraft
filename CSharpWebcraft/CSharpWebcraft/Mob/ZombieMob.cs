@@ -347,6 +347,7 @@ public class ZombieMob : MobBase
         verts[idx++] = v;
         verts[idx++] = skyBri;
         verts[idx++] = blockBri;
-        verts[idx++] = 1.0f;
+        verts[idx++] = 1.0f; // AO
+        verts[idx++] = 1.0f; // Opacity
     }
 }

@@ -7,6 +7,7 @@ public class MusicPlayer : IDisposable
 {
     private readonly AudioManager _audio;
     private SoundEffect? _music;
+    private SoundEffect? _fadingOut;
     private float _volume = 0.5f;
     private bool _playing;
 
@@ -45,7 +46,10 @@ public class MusicPlayer : IDisposable
 
         if (_playing)
         {
-            _music?.Stop(1f);
+            // Keep reference so fade-out Update() keeps running
+            _fadingOut?.Cleanup();
+            _fadingOut = _music;
+            _fadingOut?.Stop(1f);
             _music = null;
             _playing = false;
             Console.WriteLine("Audio: Music paused.");
@@ -60,6 +64,17 @@ public class MusicPlayer : IDisposable
     {
         _music?.Update(dt);
 
+        // Keep updating the fading-out track until it finishes
+        if (_fadingOut != null)
+        {
+            _fadingOut.Update(dt);
+            if (_fadingOut.IsFinished)
+            {
+                _fadingOut.Cleanup();
+                _fadingOut = null;
+            }
+        }
+
         if (_music != null && _music.IsFinished)
         {
             _music = null;
@@ -71,6 +86,8 @@ public class MusicPlayer : IDisposable
     {
         _music?.Cleanup();
         _music = null;
+        _fadingOut?.Cleanup();
+        _fadingOut = null;
         _playing = false;
     }
 }

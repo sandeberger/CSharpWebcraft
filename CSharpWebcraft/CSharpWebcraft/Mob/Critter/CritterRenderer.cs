@@ -39,6 +39,10 @@ public class CritterRenderer : IDisposable
         GL.VertexAttribPointer(6, 1, VertexAttribPointerType.Float, false, stride, 13 * sizeof(float));
         GL.EnableVertexAttribArray(6);
 
+        // Opacity: location 7, 1 float
+        GL.VertexAttribPointer(7, 1, VertexAttribPointerType.Float, false, stride, 14 * sizeof(float));
+        GL.EnableVertexAttribArray(7);
+
         GL.BindVertexArray(0);
     }
 

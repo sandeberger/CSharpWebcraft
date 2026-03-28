@@ -47,8 +47,48 @@ public static class GameConfig
     public const float WORM_STEP_SIZE = 0.6f;
     public const float WORM_TURN_NOISE_SCALE = 15.0f;
     public const float WORM_TURN_STRENGTH = 0.4f;
-    public const int WORM_Y_MIN = WATER_LEVEL + 5;
+    public const int WORM_Y_MIN = 8;
     public const int WORM_Y_MAX = WATER_LEVEL + 25;
+    public const int WORM_SEARCH_RADIUS = 2;
+    public const float WORM_DOWNWARD_BIAS = 0.1f;
+    public const float WORM_RADIUS_VARIATION = 0.35f;
+    public const int WORM_NOISE_OFFSET = 15000;
+
+    // Surface Cave Entrances
+    public const bool SURFACE_ENTRANCES_ENABLED = true;
+    public const float HILLSIDE_ENTRANCE_NOISE_SCALE = 50.0f;
+    public const float HILLSIDE_ENTRANCE_THRESHOLD = 0.85f;
+    public const int HILLSIDE_ENTRANCE_NOISE_OFFSET = 17000;
+    public const int HILLSIDE_ENTRANCE_DEPTH = 8;
+    public const float SINKHOLE_NOISE_SCALE = 80.0f;
+    public const float SINKHOLE_THRESHOLD = 0.90f;
+    public const int SINKHOLE_NOISE_OFFSET = 19000;
+    public const int SINKHOLE_MIN_DEPTH = 8;
+    public const int SINKHOLE_MAX_DEPTH = 15;
+    public const float SINKHOLE_RADIUS = 1.5f;
+
+    // Vertical Shafts (connect shallow ↔ deep caves)
+    public const bool VERTICAL_SHAFTS_ENABLED = true;
+    public const float SHAFT_NOISE_SCALE = 120.0f;
+    public const float SHAFT_THRESHOLD = 0.88f;
+    public const int SHAFT_NOISE_OFFSET = 21000;
+    public const float SHAFT_RADIUS = 1.2f;
+    public const float SHAFT_DRIFT = 0.3f;
+
+    // Cave Intersection Widening
+    public const bool CAVE_WIDENING_ENABLED = true;
+    public const int CHAMBER_NOISE_OFFSET = 23000;
+    public const float CHAMBER_RADIUS = 2.5f;
+
+    // Stalactites & Stalagmites
+    public const bool STALACTITES_ENABLED = true;
+    public const int STALACTITE_Y_MAX = 55;
+    public const float STALACTITE_NOISE_SCALE = 6.0f;
+    public const float STALACTITE_THRESHOLD = 0.4f;
+    public const int STALACTITE_MAX_LENGTH = 5;
+    public const float STALAGMITE_CHANCE = 0.4f;
+    public const int STALACTITE_NOISE_OFFSET = 25000;
+
     public const bool USE_FBM_CAVES = true;
     public const float CAVE_FBM_SCALE = 55.0f;
     public const float CAVE_FBM_THRESHOLD = -0.5f;
@@ -187,8 +227,8 @@ public static class GameConfig
     public const float SSAO_STRENGTH = 0.5f;
 
     // Bloom (emissive glow for torches, lava, spider eyes, etc.)
-    public const float BLOOM_THRESHOLD = 0.8f;
-    public const float BLOOM_INTENSITY = 0.5f;
+    public const float BLOOM_THRESHOLD = 0.6f;
+    public const float BLOOM_INTENSITY = 2.0f;
     public const int BLOOM_BLUR_PASSES = 4;
 
     // Wind System

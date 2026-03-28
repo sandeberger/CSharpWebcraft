@@ -184,6 +184,7 @@ public static class ChunkMeshBuilder
                 float r = ((bCol >> 16) & 0xFF) / 255f;
                 float g = ((bCol >> 8) & 0xFF) / 255f;
                 float b = (bCol & 0xFF) / 255f;
+                float blockOpacity = effectiveData.Opacity;
 
                 // Water depth fog (applied to tint color)
                 if (effectiveType == 9)
@@ -263,6 +264,7 @@ public static class ChunkMeshBuilder
                     buf[offset + 11] = skyBri;
                     buf[offset + 12] = blockBri;
                     buf[offset + 13] = aoValues[idx];
+                    buf[offset + 14] = blockOpacity;
                     count++;
                 }
             }
@@ -369,7 +371,7 @@ public static class ChunkMeshBuilder
 
     private static void EmitVertex(float[] buf, ref int count, float px, float py, float pz,
         float nx, float ny, float nz, float r, float g, float b, float u, float v,
-        float skyBri, float blockBri, float ao = 1.0f)
+        float skyBri, float blockBri, float ao = 1.0f, float opacity = 1.0f)
     {
         int offset = count * ChunkMesh.FloatsPerVertex;
         buf[offset + 0] = px; buf[offset + 1] = py; buf[offset + 2] = pz;
@@ -378,6 +380,7 @@ public static class ChunkMeshBuilder
         buf[offset + 9] = u;  buf[offset + 10] = v;
         buf[offset + 11] = skyBri; buf[offset + 12] = blockBri;
         buf[offset + 13] = ao;
+        buf[offset + 14] = opacity;
         count++;
     }
 

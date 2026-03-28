@@ -7,6 +7,7 @@ layout(location = 3) in vec2 aTexCoord;
 layout(location = 4) in float aSkyBri;
 layout(location = 5) in float aBlockBri;
 layout(location = 6) in float aAO;
+layout(location = 7) in float aOpacity;
 
 out vec3 vColor;
 out vec2 vTexCoord;
@@ -16,6 +17,7 @@ out vec3 vWorldPos;
 out float vSkyBri;
 out float vBlockBri;
 out float vAO;
+out float vOpacity;
 
 uniform mat4 uModel;
 uniform mat4 uView;
@@ -88,4 +90,5 @@ void main()
     vSkyBri = aSkyBri;
     vBlockBri = aBlockBri;
     vAO = aAO;
+    vOpacity = aOpacity;
 }

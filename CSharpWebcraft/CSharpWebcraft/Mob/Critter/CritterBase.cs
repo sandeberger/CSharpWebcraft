@@ -132,5 +132,6 @@ public abstract class CritterBase
         verts[idx++] = skyBri;
         verts[idx++] = blockBri;
         verts[idx++] = 1.0f; // AO
+        verts[idx++] = 1.0f; // Opacity
     }
 }

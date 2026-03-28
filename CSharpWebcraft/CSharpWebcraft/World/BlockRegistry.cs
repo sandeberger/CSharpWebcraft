@@ -21,7 +21,7 @@ public static class BlockRegistry
         Register(4, "snow", tex: BlockTexture.All(4,0));
         Register(5, "sand", color: 0xF0E68C, tex: BlockTexture.All(6,0));
         Register(7, "coal", tex: BlockTexture.All(5,0));
-        Register(9, "water_block", color: 0x1E90FF, transparent: true, opacity: 0.56f, tex: BlockTexture.All(8,3));
+        Register(9, "water_block", color: 0x1E90FF, transparent: true, opacity: 0.90f, tex: BlockTexture.All(8,3));
         Register(10, "wood", tex: BlockTexture.TopSideBottom(8,0, 7,0, 8,0));
         Register(11, "leaves", billboard: true, tex: BlockTexture.All(9,0));
         Register(12, "tall_grass", billboard: true, tex: BlockTexture.All(10,0));
@@ -64,11 +64,11 @@ public static class BlockRegistry
         Register(49, "hanging_moss", billboard: true, tex: BlockTexture.All(6,3));
         Register(50, "torch", color: 0xFFDD44, transparent: true, billboard: true, lightEmission: 14, tex: BlockTexture.All(7,3));
 
-        // Crystal Caves
-        Register(51, "crystal_amethyst", color: 0xBB66FF, lightEmission: GameConfig.CRYSTAL_LIGHT_EMISSION, tex: BlockTexture.All(9,3));
-        Register(52, "crystal_emerald",  color: 0x44FF88, lightEmission: GameConfig.CRYSTAL_LIGHT_EMISSION, tex: BlockTexture.All(10,3));
-        Register(53, "crystal_sapphire", color: 0x4488FF, lightEmission: GameConfig.CRYSTAL_LIGHT_EMISSION, tex: BlockTexture.All(11,3));
-        Register(54, "crystal_ruby",     color: 0xFF4466, lightEmission: GameConfig.CRYSTAL_LIGHT_EMISSION, tex: BlockTexture.All(12,3));
+        // Crystal Caves (translucent glowing gems)
+        Register(51, "crystal_amethyst", color: 0xBB66FF, transparent: true, opacity: 0.7f, lightEmission: GameConfig.CRYSTAL_LIGHT_EMISSION, tex: BlockTexture.All(9,3));
+        Register(52, "crystal_emerald",  color: 0x44FF88, transparent: true, opacity: 0.7f, lightEmission: GameConfig.CRYSTAL_LIGHT_EMISSION, tex: BlockTexture.All(10,3));
+        Register(53, "crystal_sapphire", color: 0x4488FF, transparent: true, opacity: 0.7f, lightEmission: GameConfig.CRYSTAL_LIGHT_EMISSION, tex: BlockTexture.All(11,3));
+        Register(54, "crystal_ruby",     color: 0xFF4466, transparent: true, opacity: 0.7f, lightEmission: GameConfig.CRYSTAL_LIGHT_EMISSION, tex: BlockTexture.All(12,3));
         Register(55, "crystal_stone",    color: 0x555566, tex: BlockTexture.All(13,3));
 
         // Ancient Ruins & Fossils
@@ -84,6 +84,9 @@ public static class BlockRegistry
         Register(63, "glow_mushroom_green",  color: 0x44FF66, transparent: true, billboard: true, lightEmission: GameConfig.MUSHROOM_LIGHT_EMISSION, tex: BlockTexture.All(2,4));
         Register(64, "mycelium",             color: 0x8B7099, tex: BlockTexture.TopSideBottom(3,4, 4,4, 1,0));
         Register(65, "spore_cloud",          color: 0x88EEDD, transparent: true, billboard: true, lightEmission: GameConfig.SPORE_LIGHT_EMISSION, tex: BlockTexture.All(5,4));
+
+        // Cave Formations (stalactites / stalagmites)
+        Register(66, "dripstone", color: 0x8B8878, tex: BlockTexture.All(0,0));
     }
 
     private static void Register(int id, string name,
